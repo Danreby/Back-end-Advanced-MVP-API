@@ -7,3 +7,6 @@ source venv/bin/activate
 
 # instalar as dependencias
 pip install
+
+# docker-compose.yml
+docker-compose up -d
