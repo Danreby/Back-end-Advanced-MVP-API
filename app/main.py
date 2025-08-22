@@ -1,25 +1,24 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from . import models
-from .database import engine
-from .routes import router as api_router
+from fastapi import FastAPI, Depends
+from .database import engine, Base
+from .routers import auth_router
+from .auth import get_current_user
 
-# cria tabelas automaticamente (apenas para dev)
-models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="My FastAPI API")
+# cria tabelas automaticamente (apenas para dev; em produção use migrations como alembic)
+Base.metadata.create_all(bind=engine)
 
-# Habilita CORS para o front local (ajuste conforme seu front)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-app.include_router(api_router, prefix="/api")
+app = FastAPI(title="FastAPI + MySQL + JWT")
 
-@app.get("/")
-async def root():
-    return {"message": "API rodando 🚀"}
+
+app.include_router(auth_router.router)
+
+
+@app.get("/ping")
+def pong():
+    return {"msg": "pong"}
+
+
+@app.get('/users/me')
+def read_users_me(current_user = Depends(get_current_user)):
+    return {"id": current_user.id, "email": current_user.email, "name": current_user.name}

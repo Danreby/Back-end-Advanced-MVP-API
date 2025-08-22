@@ -1,45 +1,60 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import List
+from datetime import timedelta
+import os
 
-from . import models, schemas, database
+from .. import schemas, crud, auth
+from ..database import get_db
+from ..mail import send_email
+from dotenv import load_dotenv
 
-router = APIRouter()
+load_dotenv()
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+EMAIL_CONFIRM_URL = os.getenv("EMAIL_CONFIRM_URL", "http://localhost:8000")
 
-@router.post("/users", response_model=schemas.UserRead, status_code=201)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == user.email).first()
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post('/register', response_model=schemas.UserOut)
+def register(user_in: schemas.UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    existing = crud.get_user_by_email(db, user_in.email)
     if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    db_user = models.User(name=user.name, email=user.email)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+        raise HTTPException(status_code=400, detail='Email already registered')
+    hashed = auth.get_password_hash(user_in.password)
+    # cria usuário inativo até confirmação
+    user = crud.create_user(db, user_in, hashed, is_active=False)
 
-@router.get("/users", response_model=List[schemas.UserRead])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(models.User).offset(skip).limit(limit).all()
+    # cria token de confirmação (expira em 24h)
+    access_token_expires = timedelta(hours=24)
+    token = auth.create_access_token(data={"sub": user.email, "type": "email_confirm"}, expires_delta=access_token_expires)
 
-@router.get("/users/{user_id}", response_model=schemas.UserRead)
-def read_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    confirm_url = f"{EMAIL_CONFIRM_URL}/auth/confirm?token={token}"
+
+    # corpo do email (pode usar HTML)
+    subject = "Confirme seu e-mail"
+    body = f"Olá {user.name or user.email},\n\nPor favor confirme seu endereço de e-mail clicando no link abaixo:\n\n{confirm_url}\n\nSe não se registrou, ignore esta mensagem."
+
+    # envia em background
+    background_tasks.add_task(send_email, subject, [user.email], body)
+
     return user
 
-@router.delete("/users/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).get(user_id)
+@router.get('/confirm')
+def confirm_email(token: str, db: Session = Depends(get_db)):
+    from jose import JWTError, jwt
+    try:
+        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        token_type = payload.get("type")
+        if token_type != "email_confirm":
+            raise HTTPException(status_code=400, detail="Invalid token type")
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token payload")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = crud.activate_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    db.delete(user)
-    db.commit()
-    return None
+
+    return {"message": "Email confirmado com sucesso", "email": user.email}
