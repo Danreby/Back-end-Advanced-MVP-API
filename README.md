@@ -10,3 +10,6 @@ pip install
 
 # docker-compose.yml
 docker-compose up -d
+
+# rodar a api
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

@@ -4,9 +4,9 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: senha123
-      MYSQL_DATABASE: mydatabase
-      MYSQL_USER: appuser
-      MYSQL_PASSWORD: app_password
+      MYSQL_DATABASE: MVPAPI
+      MYSQL_USER: NeydoMVP
+      MYSQL_PASSWORD: senha123
     ports:
       - "3306:3306"
     volumes:
