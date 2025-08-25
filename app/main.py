@@ -5,6 +5,8 @@ from .routers import auth_router
 from .auth import get_current_user
 # em app/main.py (exemplo)
 from app.routers import giantbomb_router
+# em app/main.py (já mostrou incluir routers antes)
+from app.routers import games_router
 
 # cria tabelas automaticamente (apenas para dev; em produção use migrations como alembic)
 Base.metadata.create_all(bind=engine)
@@ -12,6 +14,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="FastAPI + MySQL + JWT")
 
 app.include_router(giantbomb_router.router)
+app.include_router(games_router.router)   # ou app.include_router(games_router) dependendo de como exportou
 # --- CORS ---
 origins = [
     "http://localhost:5173",
