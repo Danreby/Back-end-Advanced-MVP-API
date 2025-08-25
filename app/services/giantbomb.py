@@ -1,4 +1,3 @@
-# app/services/giantbomb.py
 import os
 import time
 import requests
@@ -11,9 +10,8 @@ BASE = "https://www.giantbomb.com/api"
 API_KEY = os.getenv("GIANTBOMB_API_KEY")
 DEFAULT_TIMEOUT = 10
 
-# Simple in-memory TTL cache
 _cache: Dict[str, Dict[str, Any]] = {}
-CACHE_TTL = 60 * 60  # 1 hour by default
+CACHE_TTL = 60 * 60 
 
 def _cache_get(key: str):
     entry = _cache.get(key)
@@ -46,14 +44,11 @@ def _get(url_path: str, params: Optional[dict] = None, retries: int = 3) -> dict
         if r.status_code == 200:
             return r.json()
         if r.status_code == 429:
-            # Rate limited — backoff then retry
             backoff = 0.5 * (2 ** attempt)
             time.sleep(backoff)
             attempt += 1
             continue
-        # raise for other client/server errors
         r.raise_for_status()
-    # if still failing after retries
     r.raise_for_status()
 
 def search_games(query: str, limit: int = 10, field_list: str = "id,guid,name,deck,original_release_date,image") -> List[dict]:
@@ -81,7 +76,6 @@ def get_game_by_guid(guid: str, field_list: str = "id,guid,name,deck,description
     if cached:
         return cached
 
-    # resource path for an item is like "game/<guid>/" according to the API
     path = f"game/{guid}/"
     data = _get(path, params={"field_list": field_list})
     result = data.get("results")
@@ -94,5 +88,4 @@ def extract_cover_urls(game_obj: dict) -> Dict[str, str]:
     Giant Bomb 'image' object typically contains keys like: icon_url, small_url, super_url, medium_url, screen_url.
     """
     image = game_obj.get("image") or {}
-    # return only the keys that exist
     return {k: v for k, v in image.items() if v}

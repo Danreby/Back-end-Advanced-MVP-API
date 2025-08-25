@@ -62,7 +62,6 @@ def update_game(db: Session, game: models.Game, data) -> models.Game:
 
 # ---------- Reviews ----------
 def create_review(db: Session, user_id: int, game_id: int, review_in) -> models.Review:
-    # check existing (unique per user+game)
     existing = db.query(models.Review).filter(models.Review.user_id == user_id, models.Review.game_id == game_id).first()
     if existing:
         return None

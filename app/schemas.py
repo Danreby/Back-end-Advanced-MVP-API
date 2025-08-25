@@ -85,7 +85,7 @@ class ReviewOut(BaseModel):
     class Config:
         orm_mode = True
 
-# --- Pagination / list wrappers (optional) ---
+# --- Pagination / list wrappers ---
 class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut]

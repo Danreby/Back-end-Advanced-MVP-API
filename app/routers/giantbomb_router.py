@@ -15,7 +15,6 @@ def gb_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le
         results = search_games(q, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    # optionally we can map/clean fields here before returning
     return {"count": len(results), "results": results}
 
 @router.get("/games/{guid}", summary="Get GiantBomb game details by GUID")

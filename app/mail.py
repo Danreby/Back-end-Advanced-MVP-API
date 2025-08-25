@@ -1,4 +1,3 @@
-# app/mail.py
 import os
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from dotenv import load_dotenv
@@ -15,7 +14,7 @@ conf = ConnectionConfig(
     MAIL_TLS = os.getenv("MAIL_USE_TLS", "True").lower() in ("true", "1", "yes"),
     MAIL_SSL = os.getenv("MAIL_USE_SSL", "False").lower() in ("true", "1", "yes"),
     USE_CREDENTIALS = True,
-    TEMPLATE_FOLDER = "app/templates"  # se quiser usar templates HTML
+    TEMPLATE_FOLDER = "app/templates"
 )
 
 async def send_email(subject: str, recipients: list[str], body: str, subtype: MessageType = MessageType.plain):

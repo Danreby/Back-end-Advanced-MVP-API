@@ -3,32 +3,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routers import auth_router
 from .auth import get_current_user
-# em app/main.py (exemplo)
 from app.routers import giantbomb_router
-# em app/main.py (já mostrou incluir routers antes)
 from app.routers import games_router
 
-# cria tabelas automaticamente (apenas para dev; em produção use migrations como alembic)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="FastAPI + MySQL + JWT")
 
 app.include_router(giantbomb_router.router)
-app.include_router(games_router.router)   # ou app.include_router(games_router) dependendo de como exportou
+app.include_router(games_router.router)
+
 # --- CORS ---
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:3000",     # opcional: outras portas que você use
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # lista explícita de orígens em dev
-    allow_credentials=True,      # True se você enviar cookies/credentials do client
-    allow_methods=["*"],         # permite GET, POST, OPTIONS, PUT, DELETE...
-    allow_headers=["*"],         # permite Content-Type, Authorization etc.
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 # -------------- end CORS --------------
 

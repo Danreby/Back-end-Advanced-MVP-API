@@ -60,7 +60,7 @@ def confirm_email(token: str, db: Session = Depends(get_db)):
     return {"message": "Email confirmado com sucesso", "email": user.email}
 
 
-# 🔹 Novo endpoint de login
+# Novo endpoint de login
 @router.post("/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
