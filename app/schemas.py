@@ -1,28 +1,24 @@
-from pydantic import BaseModel, EmailStr, Field, conint
+# app/schemas.py (corrigido — coloque isto no seu arquivo)
+from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
+# --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
-
 
 class UserOut(BaseModel):
     id: int
     email: EmailStr
     name: Optional[str]
     is_active: bool
-
-
-class Config:
-    orm_mode = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-
 
 class TokenData(BaseModel):
     email: Optional[str] = None
@@ -57,11 +53,15 @@ class GameOut(BaseModel):
     user_id: int
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
+class GameWithRating(GameOut):
+    avg_rating: Optional[float] = None
+    reviews_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
 
-# --- Review ---
+
+# --- Review (mover para cima para evitar NameError) ---
 class ReviewCreate(BaseModel):
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
@@ -81,11 +81,20 @@ class ReviewOut(BaseModel):
     is_public: bool
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
 
-# --- Pagination / list wrappers ---
+# --- Game with reviews (agora que ReviewOut já existe) ---
+class GameWithReviews(BaseModel):
+    id: int
+    name: str
+    avg_rating: Optional[float] = None
+    reviews: List[ReviewOut] = []
+    reviews_count: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Pagination wrappers ---
 class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut]

@@ -18,6 +18,7 @@ class User(Base):
 
     games = relationship("Game", back_populates="user", cascade="all,delete-orphan")
     reviews = relationship("Review", back_populates="user", cascade="all,delete-orphan")
+    sections = relationship("Section", back_populates="user", cascade="all,delete-orphan")
 
 
 class Game(Base):
@@ -38,6 +39,7 @@ class Game(Base):
 
     user = relationship("User", back_populates="games")
     reviews = relationship("Review", back_populates="game", cascade="all,delete-orphan")
+    sections = relationship("Section", back_populates="game", cascade="all,delete-orphan")
 
 
 class Review(Base):
@@ -65,6 +67,9 @@ class Section(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255))
+    name = Column(String(255), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    user = relationship("User", back_populates="sections")
+    game = relationship("Game", back_populates="sections")

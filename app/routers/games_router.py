@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
-
+from typing import List
+from sqlalchemy import func
 from app.database import get_db
 from app import crud, schemas, models
 from app.auth import get_current_user
+from app.models import Game
+from app.services.giantbomb import get_game_by_guid
+
 
 router = APIRouter(prefix="/games", tags=["games"])
 
@@ -19,6 +23,43 @@ def list_my_games(skip: int = 0, limit: int = 50, db: Session = Depends(get_db),
     items = crud.get_games_by_user(db, current_user.id, skip=skip, limit=limit)
     total = db.query(models.Game).filter(models.Game.user_id == current_user.id).count()
     return {"total": total, "items": items}
+
+# --- Get para todos os jogos ---
+@router.get("/all")
+def list_all_games(db: Session = Depends(get_db)):
+    results = (
+        db.query(
+            Game.external_guid,
+            func.count(Game.id).label("reviews_count"),
+            func.max(Game.status).label("status"),
+        )
+        .group_by(Game.external_guid)
+        .all()
+    )
+
+    enriched = []
+    for r in results:
+        try:
+            gb_data = get_game_by_guid(r.external_guid)
+        except Exception as e:
+            print(f"❌ Erro GiantBomb GUID={r.external_guid}: {e}")
+            gb_data = None
+
+        enriched.append({
+            "external_guid": r.external_guid,
+            "name": gb_data.get("name") if gb_data else None,
+            "reviews_count": r.reviews_count,
+            "status": r.status,
+            "description": gb_data.get("deck") if gb_data else None,
+            "release_date": gb_data.get("original_release_date") if gb_data else None,
+            "platforms": gb_data.get("platforms") if gb_data else None,
+            "developers": gb_data.get("developers") if gb_data else None,
+            "publishers": gb_data.get("publishers") if gb_data else None,
+            "genres": gb_data.get("genres") if gb_data else None,
+            "image": gb_data.get("image") if gb_data else None,
+        })
+
+    return enriched
 
 # --- Get de um jogo ---
 @router.get("/{game_id}", response_model=schemas.GameOut)
