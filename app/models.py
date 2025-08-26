@@ -1,6 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, ForeignKey, Text,
-    UniqueConstraint
+    Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -19,6 +18,23 @@ class User(Base):
     games = relationship("Game", back_populates="user", cascade="all,delete-orphan")
     reviews = relationship("Review", back_populates="user", cascade="all,delete-orphan")
     sections = relationship("Section", back_populates="user", cascade="all,delete-orphan")
+
+    remember_tokens = relationship("RememberToken", back_populates="user", cascade="all,delete-orphan")
+
+
+class RememberToken(Base):
+    __tablename__ = "remember_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(128), nullable=False, index=True)  # sha256 hex length 64, mas reservamos 128
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    user_agent = Column(String(1024), nullable=True)
+    ip = Column(String(45), nullable=True)
+
+    user = relationship("User", back_populates="remember_tokens")
 
 
 class Game(Base):
@@ -59,6 +75,7 @@ class Review(Base):
 
     user = relationship("User", back_populates="reviews")
     game = relationship("Game", back_populates="reviews")
+
 
 class Section(Base):
     __tablename__ = "sections"

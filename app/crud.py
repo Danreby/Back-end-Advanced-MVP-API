@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from typing import List, Optional
 from datetime import datetime
+from app.auth import hash_token, token_expiration
 
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
@@ -101,3 +102,34 @@ def get_reviews_by_game(db: Session, game_id: int, public_only: bool = True, ski
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return total, items
+
+# --- Remember token ---
+def create_remember_token(db: Session, user: models.User, raw_token: str, expires_at=None,
+                          user_agent: str | None = None, ip: str | None = None):
+    token_hash = hash_token(raw_token)
+    if expires_at is None:
+        expires_at = token_expiration(days=30)
+    obj = models.RememberToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        user_agent=user_agent,
+        ip=ip
+    )
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+def get_remember_token_by_raw(db: Session, raw_token: str):
+    token_hash = hash_token(raw_token)
+    return db.query(models.RememberToken).filter_by(token_hash=token_hash).first()
+
+def revoke_remember_token(db: Session, token_obj: models.RememberToken):
+    if token_obj:
+        db.delete(token_obj)
+        db.commit()
+
+def revoke_all_user_tokens(db: Session, user: models.User):
+    db.query(models.RememberToken).filter_by(user_id=user.id).delete()
+    db.commit()

@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 
 from . import crud, schemas, models
 from .database import get_db
+import secrets
+import hashlib
+from datetime import datetime
 
 load_dotenv()
 
@@ -64,3 +67,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+# --- Relacionado ao token de remember ---
+def generate_raw_token(n_bytes: int = 48) -> str:
+    return secrets.token_urlsafe(n_bytes)
+
+def hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+def token_expiration(days: int = 30):
+    return datetime.datetime.utcnow() + datetime.timedelta(days=days)
