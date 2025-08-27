@@ -7,13 +7,12 @@ router = APIRouter(prefix="/gb", tags=["giantbomb"])
 
 @router.get("/search", summary="Search games on GiantBomb")
 def gb_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)):
-    """
-    Search games by query string.
-    Example: /gb/search?q=zelda&limit=5
-    """
     try:
         results = search_games(q, limit=limit)
     except Exception as e:
+        import traceback
+        print("❌ Erro em /gb/search:", e)
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     return {"count": len(results), "results": results}
 

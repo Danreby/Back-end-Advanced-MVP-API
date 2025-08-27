@@ -3,6 +3,8 @@ import time
 import requests
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
+from requests.exceptions import ConnectionError, Timeout
+from http.client import RemoteDisconnected
 
 load_dotenv()
 
@@ -26,6 +28,44 @@ def _cache_set(key: str, value: Any, ttl: int = CACHE_TTL):
     _cache[key] = {"value": value, "ts": time.time(), "ttl": ttl}
 
 def _get(url_path: str, params: Optional[dict] = None, retries: int = 3) -> dict:
+    """Internal GET with retry on 429, connection errors, and timeouts."""
+    if API_KEY is None:
+        raise RuntimeError("GIANTBOMB_API_KEY not set in environment")
+
+    params = dict(params or {})
+    params.update({"api_key": API_KEY, "format": "json"})
+    url = f"{BASE}/{url_path.lstrip('/')}"
+    headers = {
+        "User-Agent": "my-fastapi-app/1.0",
+        "Accept": "application/json",
+    }
+
+    attempt = 0
+    while attempt < retries:
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=DEFAULT_TIMEOUT)
+
+            if r.status_code == 200:
+                return r.json()
+
+            if r.status_code == 429:
+                backoff = 0.5 * (2 ** attempt)
+                time.sleep(backoff)
+                attempt += 1
+                continue
+
+            r.raise_for_status()
+
+        except (ConnectionError, Timeout, RemoteDisconnected) as e:
+            backoff = 0.5 * (2 ** attempt)
+            print(f"⚠️ GiantBomb connection failed (attempt {attempt+1}/{retries}): {e}")
+            time.sleep(backoff)
+            attempt += 1
+            continue
+
+    # Se não conseguir mesmo após retries
+    raise RuntimeError(f"GiantBomb API request failed after {retries} attempts: {url}")
+
     """Internal GET with basic retry on 429 and error handling."""
     if API_KEY is None:
         raise RuntimeError("GIANTBOMB_API_KEY not set in environment")

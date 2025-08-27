@@ -15,12 +15,52 @@ ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp
 MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2 MB
 
 
+def _user_to_dict(user: models.User, games_count: Optional[int]) -> dict:
+    """
+    Converte um ORM User para dict compatível com schemas.UserOut e injeta games_count.
+    Suporta Pydantic v2 (model_validate/model_dump) e v1 (from_orm/dict).
+    """
+    gc = int(games_count or 0)
+    try:
+        # Pydantic v2
+        if hasattr(schemas.UserOut, "model_validate"):
+            user_model = schemas.UserOut.model_validate(user)
+            user_dict = user_model.model_dump()
+        else:
+            # Pydantic v1
+            user_model = schemas.UserOut.from_orm(user)
+            user_dict = user_model.dict()
+    except Exception:
+        # Fallback: construir dict básico a partir dos atributos do ORM
+        user_dict = {
+            "id": getattr(user, "id", None),
+            "email": getattr(user, "email", None),
+            "name": getattr(user, "name", None),
+            "bio": getattr(user, "bio", None),
+            "avatar_url": getattr(user, "avatar_url", None),
+            "is_active": getattr(user, "is_active", True),
+            "created_at": getattr(user, "created_at", None),
+        }
+
+    user_dict["games_count"] = gc
+    return user_dict
+
+
 @router.get("/me", response_model=schemas.UserOut)
-def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
+def read_users_me(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     """
-    Retorna o usuário autenticado.
+    Retorna o usuário autenticado com games_count.
     """
-    return current_user
+    data = crud.get_user_profile(db, current_user.id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    user = data["user"]
+    games_count = data["games_count"]
+    return _user_to_dict(user, games_count)
 
 
 @router.put("/me", response_model=schemas.UserOut)
@@ -31,11 +71,17 @@ def update_users_me(
 ):
     """
     Atualiza campos permitidos do usuário atual (name, bio, avatar_url opcional).
+    Retorna o usuário atualizado com games_count.
     """
     updated = crud.update_user(db, current_user.id, user_in)
     if not updated:
         raise HTTPException(status_code=400, detail="Não foi possível atualizar o perfil")
-    return updated
+
+    data = crud.get_user_profile(db, updated.id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado após atualização")
+
+    return _user_to_dict(data["user"], data["games_count"])
 
 
 @router.post("/change-password")
@@ -60,7 +106,7 @@ def change_password(
 def _save_avatar_file(contents: bytes, content_type: str) -> str:
     """
     Salva o conteúdo do avatar no disco e retorna o caminho público relativo (/static/avatars/xxxx.ext).
-    Lance HTTPException em caso de erro de validação.
+    Lança HTTPException em caso de erro de validação.
     """
     if content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de imagem não suportado")
@@ -91,11 +137,13 @@ async def upload_avatar(
     - Valida tipo e tamanho
     - Remove arquivo antigo se existir
     - Salva caminho relativo no banco (ex: /static/avatars/uuid.png)
-    Retorna a URL pública completa do avatar no campo `avatar_url`.
+    Retorna a URL pública completa do avatar no campo `avatar_url` e o usuário atualizado
+    (incluindo games_count) no campo `user`.
     """
     contents = await file.read()
     public_path = _save_avatar_file(contents, file.content_type)
 
+    # remove arquivo antigo se existir
     if current_user.avatar_url:
         try:
             stored_path = current_user.avatar_url.lstrip("/")
@@ -104,12 +152,22 @@ async def upload_avatar(
         except Exception:
             pass
 
+    # atualiza e persiste
     current_user.avatar_url = public_path
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
 
+    # monta url pública completa
     base = str(request.base_url).rstrip("/")
     full_url = f"{base}{public_path}"
 
-    return {"avatar_url": full_url, "user": schemas.UserOut.model_validate(current_user)}
+    # busca games_count atualizado e monta resposta
+    data = crud.get_user_profile(db, current_user.id)
+    if not data:
+        # fallback: apenas retorna usuário sem games_count (não deveria acontecer)
+        user_out = _user_to_dict(current_user, 0)
+    else:
+        user_out = _user_to_dict(data["user"], data["games_count"])
+
+    return {"avatar_url": full_url, "user": user_out}
