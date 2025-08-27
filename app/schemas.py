@@ -1,4 +1,3 @@
-# app/schemas.py (corrigido — coloque isto no seu arquivo)
 from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
@@ -8,13 +7,28 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
+    # opcional: bio: Optional[str] = None
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None  
 
 class UserOut(BaseModel):
     id: int
     email: EmailStr
-    name: Optional[str]
-    is_active: bool
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    games_count: Optional[int] = 0
+
     model_config = ConfigDict(from_attributes=True)
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str
 
 class Token(BaseModel):
     access_token: str
@@ -22,6 +36,31 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+# --- Review ---
+class ReviewCreate(BaseModel):
+    rating: Optional[conint(ge=0, le=10)] = None
+    review_text: Optional[str] = None
+    is_public: Optional[bool] = True
+
+class ReviewUpdate(BaseModel):
+    rating: Optional[conint(ge=0, le=10)] = None
+    review_text: Optional[str] = None
+    is_public: Optional[bool] = None
+
+class ReviewOut(BaseModel):
+    id: int
+    user_id: int
+    game_id: int
+    rating: Optional[int]
+    review_text: Optional[str]
+    is_public: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 # --- Game ---
 class GameCreate(BaseModel):
@@ -51,8 +90,9 @@ class GameOut(BaseModel):
     start_date: Optional[datetime]
     finish_date: Optional[datetime]
     user_id: int
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 class GameWithRating(GameOut):
@@ -61,44 +101,21 @@ class GameWithRating(GameOut):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --- Review (mover para cima para evitar NameError) ---
-class ReviewCreate(BaseModel):
-    rating: Optional[conint(ge=0, le=10)] = None
-    review_text: Optional[str] = None
-    is_public: Optional[bool] = True
-
-class ReviewUpdate(BaseModel):
-    rating: Optional[conint(ge=0, le=10)] = None
-    review_text: Optional[str] = None
-    is_public: Optional[bool] = None
-
-class ReviewOut(BaseModel):
-    id: int
-    user_id: int
-    game_id: int
-    rating: Optional[int]
-    review_text: Optional[str]
-    is_public: bool
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
-    model_config = ConfigDict(from_attributes=True)
-
-
-# --- Game with reviews (agora que ReviewOut já existe) ---
 class GameWithReviews(BaseModel):
     id: int
     name: str
     avg_rating: Optional[float] = None
-    reviews: List[ReviewOut] = []
+    reviews: List[ReviewOut] = Field(default_factory=list)
     reviews_count: int = 0
+
     model_config = ConfigDict(from_attributes=True)
 
 
 # --- Pagination wrappers ---
 class PaginatedGames(BaseModel):
     total: int
-    items: List[GameOut]
+    items: List[GameOut] = Field(default_factory=list)
 
 class PaginatedReviews(BaseModel):
     total: int
-    items: List[ReviewOut]
+    items: List[ReviewOut] = Field(default_factory=list)

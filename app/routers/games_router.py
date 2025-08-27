@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 from sqlalchemy import func
 from app.database import get_db
 from app import crud, schemas, models
 from app.auth import get_current_user
 from app.models import Game
 from app.services.giantbomb import get_game_by_guid
-
 
 router = APIRouter(prefix="/games", tags=["games"])
 
@@ -26,40 +25,56 @@ def list_my_games(skip: int = 0, limit: int = 50, db: Session = Depends(get_db),
 
 # --- Get para todos os jogos ---
 @router.get("/all")
-def list_all_games(db: Session = Depends(get_db)):
-    results = (
+def list_all_games(db: Session = Depends(get_db)) -> List[Dict]:
+    # window: numero da linha por external_guid ordenado por updated_at/created_at desc
+    row_number = func.row_number().over(
+        partition_by=Game.external_guid,
+        order_by=func.coalesce(Game.updated_at, Game.created_at).desc()
+    ).label("rn")
+
+    # count por grupo (external_guid)
+    reviews_count = func.count(Game.id).over(partition_by=Game.external_guid).label("reviews_count")
+
+    # subquery que traz cada linha junto com rn e reviews_count
+    subq = (
         db.query(
-            Game.external_guid,
-            func.count(Game.id).label("reviews_count"),
-            func.max(Game.status).label("status"),
+            Game.external_guid.label("external_guid"),
+            Game.id.label("id"),
+            Game.name.label("name"),
+            Game.cover_url.label("cover_url"),
+            Game.description.label("description"),
+            Game.status.label("status"),
+            Game.start_date.label("start_date"),
+            Game.finish_date.label("finish_date"),
+            Game.created_at.label("created_at"),
+            Game.updated_at.label("updated_at"),
+            reviews_count,
+            row_number
         )
-        .group_by(Game.external_guid)
-        .all()
+        .filter(Game.external_guid.isnot(None))
+        .subquery()
     )
 
-    enriched = []
-    for r in results:
-        try:
-            gb_data = get_game_by_guid(r.external_guid)
-        except Exception as e:
-            print(f"❌ Erro GiantBomb GUID={r.external_guid}: {e}")
-            gb_data = None
+    rows = db.query(subq).filter(subq.c.rn == 1).all()
 
-        enriched.append({
+    result = []
+    for r in rows:
+        result.append({
             "external_guid": r.external_guid,
-            "name": gb_data.get("name") if gb_data else None,
-            "reviews_count": r.reviews_count,
+            "reviews_count": int(r.reviews_count),
+            "id": r.id,
+            "name": r.name,
+            "cover_url": r.cover_url,
+            "description": r.description,
             "status": r.status,
-            "description": gb_data.get("deck") if gb_data else None,
-            "release_date": gb_data.get("original_release_date") if gb_data else None,
-            "platforms": gb_data.get("platforms") if gb_data else None,
-            "developers": gb_data.get("developers") if gb_data else None,
-            "publishers": gb_data.get("publishers") if gb_data else None,
-            "genres": gb_data.get("genres") if gb_data else None,
-            "image": gb_data.get("image") if gb_data else None,
+            "start_date": r.start_date.isoformat() if r.start_date else None,
+            "finish_date": r.finish_date.isoformat() if r.finish_date else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         })
 
-    return enriched
+    return result
+
 
 # --- Get de um jogo ---
 @router.get("/{game_id}", response_model=schemas.GameOut)

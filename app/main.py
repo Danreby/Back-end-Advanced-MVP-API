@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends
+import os
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from .database import engine, Base
-from .routers import auth_router
-from .auth import get_current_user
-from app.routers import giantbomb_router
-from app.routers import games_router
+from .routers import auth_router, users_router, giantbomb_router, games_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -31,11 +32,14 @@ app.add_middleware(
 # -------------- end CORS --------------
 
 app.include_router(auth_router.router)
+app.include_router(users_router.router)
+
+AVATAR_DIR = "static/avatars"
+os.makedirs(AVATAR_DIR, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/ping")
 def pong():
     return {"msg": "pong"}
-
-@app.get('/users/me')
-def read_users_me(current_user = Depends(get_current_user)):
-    return {"id": current_user.id, "email": current_user.email, "name": current_user.name}
