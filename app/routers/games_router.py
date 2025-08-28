@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import List, Dict
+from sqlalchemy.orm import Session, joinedload
+from typing import List, Dict, Tuple
 from sqlalchemy import func
 from app.database import get_db
 from app import crud, schemas, models
 from app.auth import get_current_user
-from app.models import Game
+from app.models import Game, Review 
 from app.services.giantbomb import get_game_by_guid
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -145,5 +145,22 @@ def delete_review(game_id: int, review_id: int, db: Session = Depends(get_db), c
 # --- Listagem das reviews de um jogo ---
 @router.get("/{game_id}/reviews", response_model=schemas.PaginatedReviews)
 def list_reviews(game_id: int, public_only: bool = True, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
-    total, items = crud.get_reviews_by_game(db, game_id, public_only=public_only, skip=skip, limit=limit)
+    base_q = db.query(Review).filter(Review.game_id == game_id)
+    if public_only:
+        base_q = base_q.filter(Review.is_public == True)
+
+    total = base_q.count()
+
+    items = (
+        base_q
+        .options(
+            joinedload(Review.user), 
+            joinedload(Review.game)    
+        )
+        .order_by(Review.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
     return {"total": total, "items": items}

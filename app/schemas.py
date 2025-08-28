@@ -1,7 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-
 # --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
@@ -39,6 +38,20 @@ class TokenData(BaseModel):
 
 
 # --- Review ---
+class ReviewUser(BaseModel):
+    id: int
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ReviewGame(BaseModel):
+    id: int
+    name: str
+    cover_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class ReviewCreate(BaseModel):
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
@@ -59,8 +72,10 @@ class ReviewOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    user: Optional[ReviewUser] = None
+    game: Optional[ReviewGame] = None
 
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Game ---
 class GameCreate(BaseModel):
@@ -119,3 +134,4 @@ class PaginatedGames(BaseModel):
 class PaginatedReviews(BaseModel):
     total: int
     items: List[ReviewOut] = Field(default_factory=list)
+

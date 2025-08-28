@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .database import engine, Base
-from .routers import auth_router, users_router, giantbomb_router, games_router
+from .routers import auth_router, users_router, giantbomb_router, games_router, reviews_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -33,6 +33,7 @@ app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(giantbomb_router.router)
 app.include_router(games_router.router)
+app.include_router(reviews_router.router)
 
 # --- Static / Avatars ---
 
