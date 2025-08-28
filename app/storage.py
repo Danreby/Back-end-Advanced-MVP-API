@@ -17,10 +17,6 @@ def _secure_ext(filename: str) -> str:
     return ext
 
 def save_avatar_file(file: UploadFile, user_id: int) -> Tuple[str, Path]:
-    """
-    Salva o UploadFile no disco, retornando a URL relativa (avatar_url) e o Path salvo.
-    Ex: ("/static/uploads/avatars/1234-uuid.png", Path("static/uploads/avatars/1234-uuid.png"))
-    """
     ext = _secure_ext(file.filename)
     filename = f"{user_id}-{uuid.uuid4().hex}{ext}"
     dest = UPLOAD_DIR / filename
@@ -40,10 +36,6 @@ def save_avatar_file(file: UploadFile, user_id: int) -> Tuple[str, Path]:
     return url, dest
 
 def remove_local_file_from_url(avatar_url: Optional[str]) -> bool:
-    """
-    Remove arquivo local se avatar_url começar com MEDIA_URL_PREFIX.
-    Retorna True se removeu, False caso contrário.
-    """
     if not avatar_url:
         return False
     if not avatar_url.startswith(MEDIA_URL_PREFIX):

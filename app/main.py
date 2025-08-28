@@ -1,4 +1,3 @@
-# app/main.py
 import os
 from pathlib import Path
 
@@ -9,13 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from .database import engine, Base
 from .routers import auth_router, users_router, giantbomb_router, games_router
 
-# cria tabelas (opcional em runtime, útil em dev)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="FastAPI + MySQL + JWT")
 
 # --- CORS ---
-# ajuste as origens conforme seu frontend (em produção restrinja apropriadamente)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -38,14 +35,12 @@ app.include_router(giantbomb_router.router)
 app.include_router(games_router.router)
 
 # --- Static / Avatars ---
-# Diretório público para arquivos estáticos (avatars, etc).
-# Recomendo: ./static/avatars
-BASE_DIR = Path(__file__).resolve().parent.parent  # raiz do projeto (app/..)
+
+BASE_DIR = Path(__file__).resolve().parent.parent 
 STATIC_DIR = BASE_DIR / "static"
 AVATAR_DIR = STATIC_DIR / "avatars"
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 
-# monta a pasta 'static' para servir em /static/...
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

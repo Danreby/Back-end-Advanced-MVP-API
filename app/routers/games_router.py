@@ -26,7 +26,6 @@ def list_my_games(skip: int = 0, limit: int = 50, db: Session = Depends(get_db),
 # --- Get para todos os jogos ---
 @router.get("/all")
 def list_all_games(db: Session = Depends(get_db)) -> List[Dict]:
-    # window: numero da linha por external_guid ordenado por updated_at/created_at desc
     row_number = func.row_number().over(
         partition_by=Game.external_guid,
         order_by=func.coalesce(Game.updated_at, Game.created_at).desc()

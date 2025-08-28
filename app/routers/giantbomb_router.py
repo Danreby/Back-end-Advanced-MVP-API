@@ -18,9 +18,6 @@ def gb_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le
 
 @router.get("/games/{guid}", summary="Get GiantBomb game details by GUID")
 def gb_game_detail(guid: str):
-    """
-    Example GUID: '3030-4725'
-    """
     try:
         game = get_game_by_guid(guid)
     except Exception as e:

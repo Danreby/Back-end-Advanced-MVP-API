@@ -94,13 +94,11 @@ def login(
             detail="Please confirm your email before login."
         )
 
-    # cria JWT normal (expira rápido, ex.: 30min)
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
 
-    # ⚡ ADIÇÃO: lembrar-me (OAuth2PasswordRequestForm não tem "remember", então precisa vir em query/body extra)
     remember = request.query_params.get("remember") == "true"
     if remember:
         raw_token = token_utils.generate_raw_token()

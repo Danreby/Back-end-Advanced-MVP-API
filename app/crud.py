@@ -1,4 +1,3 @@
-# app/crud.py
 from datetime import datetime
 from typing import List, Optional, Any, Union, Dict
 
@@ -46,9 +45,6 @@ def activate_user_by_email(db: Session, email: str) -> Optional[models.User]:
 
 
 def get_user_profile(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
-    """
-    Retorna {"user": User, "games_count": int} ou None
-    """
     res = (
         db.query(models.User, func.count(models.Game.id).label("games_count"))
           .outerjoin(models.Game, models.Game.user_id == models.User.id)
@@ -63,10 +59,6 @@ def get_user_profile(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
 
 
 def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Dict[str, Any]]) -> Optional[models.User]:
-    """
-    Atualiza somente campos permitidos enviados em user_in.
-    Suporta Pydantic v2 (model_dump) e v1 (dict) e dict cru.
-    """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         return None
@@ -83,7 +75,7 @@ def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Di
         if isinstance(user_in, dict):
             data = user_in
 
-    allowed = {"name", "bio"}  # campos permitidos para atualização aqui
+    allowed = {"name", "bio"} 
     for k, v in data.items():
         if k in allowed:
             setattr(user, k, v)
@@ -96,9 +88,6 @@ def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Di
 
 
 def set_user_password(db: Session, user_id: int, hashed_password: str) -> bool:
-    """
-    Atualiza a senha (usa o hash já gerado).
-    """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         return False
@@ -204,10 +193,6 @@ def get_reviews_by_game(db: Session, game_id: int, public_only: bool = True, ski
 
 # --- avatar ---
 def set_user_avatar(db: Session, user_id: int, avatar_url: Optional[str]) -> Optional[models.User]:
-    """
-    Define o avatar_url (path relativo, ex: '/static/avatars/uuid.png') para o usuário.
-    Retorna o user atualizado.
-    """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         return None
