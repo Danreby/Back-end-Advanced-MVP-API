@@ -1,17 +1,20 @@
 from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+
+
 # --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
-    #bio: Optional[str] = None
+
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None  
+
 
 class UserOut(BaseModel):
     id: int
@@ -21,29 +24,33 @@ class UserOut(BaseModel):
     avatar_url: Optional[str] = None
     is_active: bool = True
     created_at: Optional[datetime] = None
-    games_count: Optional[int] = 0
+    games_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class ChangePassword(BaseModel):
     old_password: str
     new_password: str
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 class TokenData(BaseModel):
     email: Optional[str] = None
 
 
-# --- Review ---
+# --- Reviews ---
 class ReviewUser(BaseModel):
     id: int
     name: Optional[str] = None
     avatar_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class ReviewGame(BaseModel):
     id: int
@@ -52,15 +59,19 @@ class ReviewGame(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class ReviewCreate(BaseModel):
-    rating: Optional[conint(ge=0, le=10)] = None
+    rating: conint(ge=0, le=10)  # obrigatório na criação
     review_text: Optional[str] = None
-    is_public: Optional[bool] = True
+    is_public: bool = True
+
 
 class ReviewUpdate(BaseModel):
+    # todos opcionais → permite atualizar só a nota, só o texto, ou ambos
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
     is_public: Optional[bool] = None
+
 
 class ReviewOut(BaseModel):
     id: int
@@ -77,7 +88,8 @@ class ReviewOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# --- Game ---
+
+# --- Games ---
 class GameCreate(BaseModel):
     name: str = Field(..., max_length=255)
     external_guid: Optional[str] = None
@@ -87,6 +99,7 @@ class GameCreate(BaseModel):
     start_date: Optional[datetime] = None
     finish_date: Optional[datetime] = None
 
+
 class GameUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     cover_url: Optional[str] = None
@@ -94,6 +107,7 @@ class GameUpdate(BaseModel):
     status: Optional[str] = Field(None, max_length=50)
     start_date: Optional[datetime] = None
     finish_date: Optional[datetime] = None
+
 
 class GameOut(BaseModel):
     id: int
@@ -110,9 +124,11 @@ class GameOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class GameWithRating(GameOut):
     avg_rating: Optional[float] = None
     reviews_count: int = 0
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -131,7 +147,7 @@ class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut] = Field(default_factory=list)
 
+
 class PaginatedReviews(BaseModel):
     total: int
     items: List[ReviewOut] = Field(default_factory=list)
-
