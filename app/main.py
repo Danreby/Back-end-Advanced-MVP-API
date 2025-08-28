@@ -1,4 +1,6 @@
+# app/main.py
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,14 +9,13 @@ from fastapi.staticfiles import StaticFiles
 from .database import engine, Base
 from .routers import auth_router, users_router, giantbomb_router, games_router
 
+# cria tabelas (opcional em runtime, útil em dev)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="FastAPI + MySQL + JWT")
 
-app.include_router(giantbomb_router.router)
-app.include_router(games_router.router)
-
 # --- CORS ---
+# ajuste as origens conforme seu frontend (em produção restrinja apropriadamente)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -29,15 +30,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# -------------- end CORS --------------
 
+# --- ROTAS / Routers ---
 app.include_router(auth_router.router)
 app.include_router(users_router.router)
+app.include_router(giantbomb_router.router)
+app.include_router(games_router.router)
 
-AVATAR_DIR = "static/avatars"
-os.makedirs(AVATAR_DIR, exist_ok=True)
+# --- Static / Avatars ---
+# Diretório público para arquivos estáticos (avatars, etc).
+# Recomendo: ./static/avatars
+BASE_DIR = Path(__file__).resolve().parent.parent  # raiz do projeto (app/..)
+STATIC_DIR = BASE_DIR / "static"
+AVATAR_DIR = STATIC_DIR / "avatars"
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# monta a pasta 'static' para servir em /static/...
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/ping")

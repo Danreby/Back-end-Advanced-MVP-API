@@ -1,3 +1,4 @@
+# app/crud.py
 from datetime import datetime
 from typing import List, Optional, Any, Union, Dict
 
@@ -6,7 +7,7 @@ from sqlalchemy import func
 
 from . import models, schemas
 from app.auth import hash_token, token_expiration
-
+from pathlib import Path
 
 # --- Users ---
 def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
@@ -23,7 +24,8 @@ def create_user(db: Session, user: schemas.UserCreate, hashed_password: str, is_
         name=user.name,
         hashed_password=hashed_password,
         is_active=is_active,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
     )
     db.add(db_user)
     db.commit()
@@ -36,6 +38,7 @@ def activate_user_by_email(db: Session, email: str) -> Optional[models.User]:
     if not user:
         return None
     user.is_active = True
+    user.updated_at = datetime.utcnow()
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -43,6 +46,9 @@ def activate_user_by_email(db: Session, email: str) -> Optional[models.User]:
 
 
 def get_user_profile(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Retorna {"user": User, "games_count": int} ou None
+    """
     res = (
         db.query(models.User, func.count(models.Game.id).label("games_count"))
           .outerjoin(models.Game, models.Game.user_id == models.User.id)
@@ -58,8 +64,8 @@ def get_user_profile(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
 
 def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Dict[str, Any]]) -> Optional[models.User]:
     """
-    Atualiza somente campos enviados em user_in.
-    Suporta Pydantic v2 (model_dump) e v1 (dict).
+    Atualiza somente campos permitidos enviados em user_in.
+    Suporta Pydantic v2 (model_dump) e v1 (dict) e dict cru.
     """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -77,7 +83,7 @@ def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Di
         if isinstance(user_in, dict):
             data = user_in
 
-    allowed = {"name", "bio"}  
+    allowed = {"name", "bio"}  # campos permitidos para atualização aqui
     for k, v in data.items():
         if k in allowed:
             setattr(user, k, v)
@@ -114,7 +120,8 @@ def create_game(db: Session, user_id: int, game_in) -> models.Game:
         start_date=game_in.start_date,
         finish_date=game_in.finish_date,
         user_id=user_id,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
     )
     db.add(g)
     db.commit()
@@ -157,7 +164,8 @@ def create_review(db: Session, user_id: int, game_id: int, review_in) -> Optiona
         rating=review_in.rating,
         review_text=review_in.review_text,
         is_public=review_in.is_public if review_in.is_public is not None else True,
-        created_at=datetime.utcnow()
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
     )
     db.add(r)
     db.commit()
@@ -192,6 +200,30 @@ def get_reviews_by_game(db: Session, game_id: int, public_only: bool = True, ski
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return total, items
+
+
+# --- avatar ---
+def set_user_avatar(db: Session, user_id: int, avatar_url: Optional[str]) -> Optional[models.User]:
+    """
+    Define o avatar_url (path relativo, ex: '/static/avatars/uuid.png') para o usuário.
+    Retorna o user atualizado.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    user.avatar_url = avatar_url
+    user.updated_at = datetime.utcnow()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def get_user_avatar_url(db: Session, user_id: int) -> Optional[str]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    return user.avatar_url
 
 
 # --- Remember token ---
