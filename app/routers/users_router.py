@@ -191,3 +191,67 @@ async def upload_avatar(
         user_out = _user_to_dict(data["user"], data["games_count"])
 
     return {"avatar_url": full_url, "user": user_out}
+
+from typing import List
+from fastapi import Path
+
+@router.get("/me/games")
+def read_my_games(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """
+    Retorna os jogos do usuário autenticado.
+    """
+    games = db.query(models.Game).filter(models.Game.user_id == current_user.id).all()
+
+    out = []
+    for g in games:
+        out.append({
+            "id": g.id,
+            "name": g.name,
+            "external_guid": g.external_guid,
+            "cover_url": g.cover_url,
+            "description": g.description,
+            "user_id": g.user_id,
+            "status": g.status,
+            "start_date": g.start_date.isoformat() if g.start_date else None,
+            "finish_date": g.finish_date.isoformat() if g.finish_date else None,
+            "created_at": g.created_at.isoformat() if g.created_at else None,
+            "updated_at": g.updated_at.isoformat() if g.updated_at else None,
+        })
+    return out
+
+
+@router.get("/{user_id}/games")
+def read_user_games(
+    user_id: int = Path(..., description="ID do usuário"),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    """
+    Retorna os jogos do usuário especificado.
+    Somente permite que o próprio usuário acesse a sua lista (retorna 403 caso contrário).
+    Se quiser permitir que qualquer um veja a lista, remova/ajuste a checagem de autorização abaixo.
+    """
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
+
+    games = db.query(models.Game).filter(models.Game.user_id == user_id).all()
+
+    out = []
+    for g in games:
+        out.append({
+            "id": g.id,
+            "name": g.name,
+            "external_guid": g.external_guid,
+            "cover_url": g.cover_url,
+            "description": g.description,
+            "user_id": g.user_id,
+            "status": g.status,
+            "start_date": g.start_date.isoformat() if g.start_date else None,
+            "finish_date": g.finish_date.isoformat() if g.finish_date else None,
+            "created_at": g.created_at.isoformat() if g.created_at else None,
+            "updated_at": g.updated_at.isoformat() if g.updated_at else None,
+        })
+    return out

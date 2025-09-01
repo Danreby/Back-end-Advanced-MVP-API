@@ -29,7 +29,7 @@ class RememberToken(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash = Column(String(128), nullable=False, index=True)  # sha256 hex length 64, mas reservamos 128
+    token_hash = Column(String(128), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
