@@ -1,17 +1,16 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from typing import Optional
-from app.database import get_db
-from app import schemas, models
-from app.auth import get_current_user
-from math import ceil
 from sqlalchemy import func, desc
-from typing import List
+from app.database import get_db
+from app import models, schemas
+from app.auth import get_current_user
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 MAX_LIMIT = 500
 
+# ---------- Public list (unchanged) ----------
 @router.get("/", response_model=schemas.PaginatedReviews)
 def list_public_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     if skip < 0:
@@ -30,7 +29,9 @@ def list_public_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(ge
     )
     return {"total": total, "items": items}
 
-@router.get("/me", response_model=schemas.PaginatedReviews)
+
+# ---------- (compat) paginated list of my reviews ----------
+@router.get("/my", response_model=schemas.PaginatedReviews)
 def list_my_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     if skip < 0:
         skip = 0
@@ -49,12 +50,91 @@ def list_my_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(get_db
     return {"total": total, "items": items}
 
 
-# Criar review para um game
+# ---------- NEW: get the authenticated user's single review for a game ----------
+@router.get("/me", response_model=Optional[schemas.ReviewOut])
+def get_my_review(
+    game_id: Optional[int] = None,
+    external_guid: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    if not game_id and not external_guid:
+        raise HTTPException(status_code=400, detail="game_id or external_guid required")
+
+    q = db.query(models.Review).filter(models.Review.user_id == current_user.id)
+    if game_id:
+        q = q.filter(models.Review.game_id == game_id)
+    if external_guid:
+        q = q.filter(models.Review.external_guid == external_guid)
+
+    review = q.order_by(models.Review.updated_at.desc()).first()
+    if not review:
+        return None
+    return review
+
+
+# ---------- NEW: upsert endpoint (create or update in a single call) ----------
+@router.post("/upsert", response_model=schemas.ReviewOut)
+def upsert_review(payload: schemas.ReviewUpsert, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    game = None
+    if payload.game_id:
+        game = db.query(models.Game).get(payload.game_id)
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+    elif payload.external_guid:
+        game = db.query(models.Game).filter_by(external_guid=payload.external_guid).first()
+        if not game:
+            game = models.Game(external_guid=payload.external_guid, name=payload.name or "Unknown")
+            db.add(game)
+            db.commit()
+            db.refresh(game)
+    else:
+        raise HTTPException(status_code=400, detail="game_id or external_guid required")
+
+    review = db.query(models.Review).filter_by(user_id=current_user.id, game_id=game.id).first()
+    if review:
+        for k, v in payload.dict(exclude_unset=True).items():
+            if k in ("rating", "review_text", "is_public"):
+                setattr(review, k, v)
+    else:
+        review = models.Review(
+            user_id=current_user.id,
+            game_id=game.id,
+            rating=payload.rating,
+            review_text=payload.review_text,
+            is_public=payload.is_public if payload.is_public is not None else True,
+            external_guid=payload.external_guid if payload.external_guid else None
+        )
+        db.add(review)
+
+    db.commit()
+    db.refresh(review)
+    return review
+
+
+# ---------- NEW: autosave (alias to upsert but PATCH semantics) ----------
+@router.patch("/autosave", response_model=schemas.ReviewOut)
+def autosave_review(payload: schemas.ReviewAutoSave, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    upsert_payload = schemas.ReviewUpsert(
+        game_id=payload.game_id,
+        external_guid=payload.external_guid,
+        rating=payload.rating,
+        review_text=payload.review_text,
+        is_public=payload.is_public,
+        name=payload.name if hasattr(payload, "name") else None,
+    )
+    return upsert_review(upsert_payload, db=db, current_user=current_user)
+
+
+# ---------- Keep existing create/update/delete for compatibility (optional) ----------
 @router.post("/game/{game_id}", response_model=schemas.ReviewOut)
 def create_review(game_id: int, payload: schemas.ReviewCreate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     game = db.query(models.Game).get(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
+    existing = db.query(models.Review).filter_by(user_id=current_user.id, game_id=game_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Review already exists")
     review = models.Review(**payload.dict(), user_id=current_user.id, game_id=game_id)
     db.add(review)
     db.commit()
@@ -62,7 +142,6 @@ def create_review(game_id: int, payload: schemas.ReviewCreate, db: Session = Dep
     return review
 
 
-# Atualizar review
 @router.put("/{review_id}", response_model=schemas.ReviewOut)
 def update_review(review_id: int, payload: schemas.ReviewUpdate, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     review = db.query(models.Review).filter_by(id=review_id, user_id=current_user.id).first()
@@ -75,7 +154,6 @@ def update_review(review_id: int, payload: schemas.ReviewUpdate, db: Session = D
     return review
 
 
-# Deletar review
 @router.delete("/{review_id}", status_code=204)
 def delete_review(review_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     review = db.query(models.Review).filter_by(id=review_id, user_id=current_user.id).first()
@@ -85,7 +163,8 @@ def delete_review(review_id: int, db: Session = Depends(get_db), current_user=De
     db.commit()
     return
 
-# Paginar por jogos (grupos). skip/limit são aplicados sobre grupos (jogos).
+
+# ---------- Grouped listing by game (unchanged) ----------
 @router.get("/grouped", response_model=schemas.PaginatedReviews)
 def list_public_reviews_grouped(
     skip: int = 0, 
