@@ -2,19 +2,16 @@ from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
-
 # --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
 
-
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None  
-
 
 class UserOut(BaseModel):
     id: int
@@ -61,13 +58,12 @@ class ReviewGame(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    rating: conint(ge=0, le=10)  # obrigatório na criação
+    rating: conint(ge=0, le=10)
     review_text: Optional[str] = None
     is_public: bool = True
 
 
 class ReviewUpdate(BaseModel):
-    # todos opcionais → permite atualizar só a nota, só o texto, ou ambos
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
     is_public: Optional[bool] = None
@@ -147,7 +143,11 @@ class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut] = Field(default_factory=list)
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PaginatedReviews(BaseModel):
     total: int
     items: List[ReviewOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)

@@ -4,11 +4,23 @@ from typing import Optional
 from app.database import get_db
 from app import schemas, models
 from app.auth import get_current_user
+from math import ceil
+from sqlalchemy import func, desc
+from typing import List
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
+MAX_LIMIT = 500
+
 @router.get("/", response_model=schemas.PaginatedReviews)
 def list_public_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    if skip < 0:
+        skip = 0
+    if limit <= 0:
+        limit = 50
+    if limit > MAX_LIMIT:
+        limit = MAX_LIMIT
+
     q = db.query(models.Review).filter(models.Review.is_public == True)
     total = q.count()
     items = (
@@ -20,6 +32,13 @@ def list_public_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(ge
 
 @router.get("/me", response_model=schemas.PaginatedReviews)
 def list_my_reviews(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    if skip < 0:
+        skip = 0
+    if limit <= 0:
+        limit = 50
+    if limit > MAX_LIMIT:
+        limit = MAX_LIMIT
+
     q = db.query(models.Review).filter(models.Review.user_id == current_user.id)
     total = q.count()
     items = (
@@ -65,3 +84,61 @@ def delete_review(review_id: int, db: Session = Depends(get_db), current_user=De
     db.delete(review)
     db.commit()
     return
+
+# Paginar por jogos (grupos). skip/limit são aplicados sobre grupos (jogos).
+@router.get("/grouped", response_model=schemas.PaginatedReviews)
+def list_public_reviews_grouped(
+    skip: int = 0, 
+    limit: int = 5, 
+    reviews_per_game_limit: int = 200,
+    db: Session = Depends(get_db),
+):
+    if skip < 0:
+        skip = 0
+    if limit <= 0:
+        limit = 5
+    if reviews_per_game_limit <= 0:
+        reviews_per_game_limit = 200
+    total_groups = db.query(func.count(func.distinct(models.Review.game_id))).filter(models.Review.is_public == True).scalar() or 0
+
+    if total_groups == 0:
+        return {"total": 0, "items": []}
+
+    group_q = (
+        db.query(
+            models.Review.game_id,
+            func.count(models.Review.id).label("reviews_count"),
+            func.avg(models.Review.rating).label("avg_rating"),
+        )
+        .filter(models.Review.is_public == True)
+        .group_by(models.Review.game_id)
+        .order_by(desc("reviews_count"), desc("avg_rating"))
+        .offset(skip)
+        .limit(limit)
+    )
+    group_rows = group_q.all()
+    game_ids = [int(row.game_id) for row in group_rows]
+
+    if not game_ids:
+        return {"total": total_groups, "items": []}
+
+    reviews_q = (
+        db.query(models.Review)
+        .options(joinedload(models.Review.user), joinedload(models.Review.game))
+        .filter(models.Review.is_public == True, models.Review.game_id.in_(game_ids))
+        .order_by(models.Review.created_at.desc())
+    )
+    reviews = reviews_q.all()
+
+    reviews_by_game = {gid: [] for gid in game_ids}
+    for r in reviews:
+        gid = r.game_id
+        if gid in reviews_by_game:
+            reviews_by_game[gid].append(r)
+
+    flattened = []
+    for gid in game_ids:
+        items_for_game = reviews_by_game.get(gid, [])[:reviews_per_game_limit]
+        flattened.extend(items_for_game)
+
+    return {"total": total_groups, "items": flattened}
