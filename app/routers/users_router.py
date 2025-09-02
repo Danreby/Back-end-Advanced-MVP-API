@@ -200,9 +200,6 @@ def read_my_games(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """
-    Retorna os jogos do usuário autenticado.
-    """
     games = db.query(models.Game).filter(models.Game.user_id == current_user.id).all()
 
     out = []
@@ -229,11 +226,6 @@ def read_user_games(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
-    """
-    Retorna os jogos do usuário especificado.
-    Somente permite que o próprio usuário acesse a sua lista (retorna 403 caso contrário).
-    Se quiser permitir que qualquer um veja a lista, remova/ajuste a checagem de autorização abaixo.
-    """
     if current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 

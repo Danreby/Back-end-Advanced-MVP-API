@@ -164,3 +164,14 @@ def list_reviews(game_id: int, public_only: bool = True, skip: int = 0, limit: i
     )
 
     return {"total": total, "items": items}
+
+# --- Atualizar status do jogo ---
+@router.patch("/{game_id}/status", response_model=schemas.GameOut)
+def update_game_status(game_id: int, payload: dict, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    g = crud.get_game(db, game_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    if g.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    updated = crud.update_game(db, g, {"status": payload.get("status")})
+    return updated
