@@ -2,19 +2,16 @@ from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
-
 # --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
 
-
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     bio: Optional[str] = None
-    avatar_url: Optional[str] = None  
-
+    avatar_url: Optional[str] = None
 
 class UserOut(BaseModel):
     id: int
@@ -61,13 +58,12 @@ class ReviewGame(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    rating: conint(ge=0, le=10)  # obrigatório na criação
+    rating: conint(ge=0, le=10)
     review_text: Optional[str] = None
     is_public: bool = True
 
 
 class ReviewUpdate(BaseModel):
-    # todos opcionais → permite atualizar só a nota, só o texto, ou ambos
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
     is_public: Optional[bool] = None
@@ -95,7 +91,7 @@ class GameCreate(BaseModel):
     external_guid: Optional[str] = None
     cover_url: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[str] = Field("Wishlist", max_length=50)
+    status: Optional[str] = Field("wishlist", max_length=50)
     start_date: Optional[datetime] = None
     finish_date: Optional[datetime] = None
 
@@ -115,7 +111,7 @@ class GameOut(BaseModel):
     external_guid: Optional[str]
     cover_url: Optional[str]
     description: Optional[str]
-    status: str
+    status: Optional[str]
     start_date: Optional[datetime]
     finish_date: Optional[datetime]
     user_id: int
@@ -147,7 +143,39 @@ class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut] = Field(default_factory=list)
 
+    model_config = ConfigDict(from_attributes=True)
+
 
 class PaginatedReviews(BaseModel):
     total: int
     items: List[ReviewOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Reutilizáveis / base ---
+class ReviewBase(BaseModel):
+    rating: Optional[int] = Field(None, ge=0, le=10, description="Nota (0-10)")
+    review_text: Optional[str] = Field(None, max_length=5000, description="Texto da review")
+    is_public: Optional[bool] = Field(True, description="Se a review é pública")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewUpsert(ReviewBase):
+    game_id: Optional[int] = Field(None, description="ID interno do game (opcional se usar external_guid)")
+    external_guid: Optional[str] = Field(None, description="GUID externo do jogo (ex.: GiantBomb)")
+    name: Optional[str] = Field(None, description="Nome do jogo (opcional; só usado se for criar game mínimo)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewAutoSave(BaseModel):
+    game_id: Optional[int] = Field(None, description="ID do jogo")
+    external_guid: Optional[str] = Field(None, description="GUID externo do jogo")
+    rating: Optional[int] = Field(None, ge=0, le=10, description="Nota (0-10)")
+    review_text: Optional[str] = Field(None, max_length=5000, description="Texto da review")
+    is_public: Optional[bool] = Field(True, description="Se a review é pública")
+    name: Optional[str] = Field(None, description="Nome do jogo (opcional)")
+
+    model_config = ConfigDict(from_attributes=True)
