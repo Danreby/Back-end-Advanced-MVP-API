@@ -2,16 +2,19 @@ from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
+
 # --- Users / Auth ---
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: Optional[str] = None
 
+
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None  
+
 
 class UserOut(BaseModel):
     id: int
@@ -58,12 +61,13 @@ class ReviewGame(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    rating: conint(ge=0, le=10)
+    rating: conint(ge=0, le=10)  # obrigatório na criação
     review_text: Optional[str] = None
     is_public: bool = True
 
 
 class ReviewUpdate(BaseModel):
+    # todos opcionais → permite atualizar só a nota, só o texto, ou ambos
     rating: Optional[conint(ge=0, le=10)] = None
     review_text: Optional[str] = None
     is_public: Optional[bool] = None
@@ -143,11 +147,39 @@ class PaginatedGames(BaseModel):
     total: int
     items: List[GameOut] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 class PaginatedReviews(BaseModel):
     total: int
     items: List[ReviewOut] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True)
+# --- Reutilizáveis / base ---
+class ReviewBase(BaseModel):
+    rating: Optional[int] = Field(None, ge=0, le=10, description="Nota (0-10)")
+    review_text: Optional[str] = Field(None, max_length=5000, description="Texto da review")
+    is_public: Optional[bool] = Field(True, description="Se a review é pública")
+
+    class Config:
+        orm_mode = True
+
+
+# --- Payload para upsert (criar ou atualizar em uma chamada) ---
+class ReviewUpsert(ReviewBase):
+    game_id: Optional[int] = Field(None, description="ID interno do game (opcional se usar external_guid)")
+    external_guid: Optional[str] = Field(None, description="GUID externo do jogo (ex.: GiantBomb)")
+    name: Optional[str] = Field(None, description="Nome do jogo (opcional; só usado se for criar game mínimo)")
+
+    class Config:
+        orm_mode = True
+
+
+# --- Payload leve para autosave (pode ser um subset do upsert) ---
+class ReviewAutoSave(BaseModel):
+    game_id: Optional[int] = Field(None, description="ID do jogo")
+    external_guid: Optional[str] = Field(None, description="GUID externo do jogo")
+    rating: Optional[int] = Field(None, ge=0, le=10, description="Nota (0-10)")
+    review_text: Optional[str] = Field(None, max_length=5000, description="Texto da review")
+    is_public: Optional[bool] = Field(True, description="Se a review é pública")
+    name: Optional[str] = Field(None, description="Nome do jogo (opcional)")
+
+    class Config:
+        orm_mode = True
