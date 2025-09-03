@@ -36,7 +36,6 @@ app.include_router(games_router.router)
 app.include_router(reviews_router.router)
 
 # --- Static / Avatars ---
-
 BASE_DIR = Path(__file__).resolve().parent.parent 
 STATIC_DIR = BASE_DIR / "static"
 AVATAR_DIR = STATIC_DIR / "avatars"

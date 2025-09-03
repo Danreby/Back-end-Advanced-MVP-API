@@ -1,3 +1,4 @@
+# app/crud.py
 from datetime import datetime
 from typing import List, Optional, Any, Union, Dict
 
@@ -5,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from . import models, schemas
-from app.auth import hash_token, token_expiration
+from app.utils.security import hash_token, token_expiration
 from pathlib import Path
 
 # --- Users ---
@@ -20,7 +21,7 @@ def get_user_by_id(db: Session, user_id: int) -> Optional[models.User]:
 def create_user(db: Session, user: schemas.UserCreate, hashed_password: str, is_active: bool = False) -> models.User:
     db_user = models.User(
         email=user.email,
-        name=user.name,
+        name=getattr(user, "name", None),
         hashed_password=hashed_password,
         is_active=is_active,
         created_at=datetime.utcnow(),
@@ -34,6 +35,20 @@ def create_user(db: Session, user: schemas.UserCreate, hashed_password: str, is_
 
 def activate_user_by_email(db: Session, email: str) -> Optional[models.User]:
     user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        return None
+    user.is_active = True
+    user.updated_at = datetime.utcnow()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def activate_user(db: Session, user: models.User) -> Optional[models.User]:
+    """
+    Activa um usuário (útil na rota /auth/confirm).
+    """
     if not user:
         return None
     user.is_active = True

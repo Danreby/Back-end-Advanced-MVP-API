@@ -1,4 +1,4 @@
-#auth.py
+# app/auth.py
 import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
@@ -45,11 +45,11 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     if not user:
         return None
 
-    if not getattr(user, "is_active", True):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
+    # if not getattr(user, "is_active", True):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Inactive user"
+    #     )
 
     if not verify_password(password, user.hashed_password):
         return None
@@ -80,6 +80,38 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None,
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+
+# --- Confirmation token helpers ---
+def create_confirmation_token(email: str, expires_minutes: int = 60 * 24) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=expires_minutes)
+    payload: Dict[str, Any] = {
+        "sub": email,
+        "iat": now,
+        "exp": expire,
+        "type": "confirm"
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_confirmation_token(token: str) -> str:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired confirmation token"
+    )
+    try:
+        payload = decode_access_token(token)
+    except JWTError:
+        raise credentials_exception
+
+    if payload.get("type") != "confirm":
+        raise credentials_exception
+
+    email = payload.get("sub")
+    if not email:
+        raise credentials_exception
+    return email
 
 
 # --- FastAPI dependencias ---
@@ -116,9 +148,9 @@ def generate_raw_token(n_bytes: int = 48) -> str:
     return secrets.token_urlsafe(n_bytes)
 
 
-def hash_token(raw_token: str) -> str:
-    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+# def hash_token(raw_token: str) -> str:
+#     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def token_expiration(days: int = 30) -> datetime:
-    return datetime.utcnow() + timedelta(days=days)
+# def token_expiration(days: int = 30) -> datetime:
+#     return datetime.utcnow() + timedelta(days=days)
