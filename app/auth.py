@@ -17,21 +17,16 @@ import hashlib
 
 load_dotenv()
 
-# Config (leia de .env, com fallback)
 SECRET_KEY = os.getenv("SECRET_KEY", "troque_esta_chave")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
-# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# OAuth2 scheme (rota de obtenção do token)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-# -----------------------
-# Password helpers
-# -----------------------
+# --- Password helpers ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return pwd_context.verify(plain_password, hashed_password)
@@ -43,9 +38,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-# -----------------------
-# Authentication helpers
-# -----------------------
+# --- Authentication helpers ---
 def authenticate_user(db: Session, email: str, password: str) -> Optional[models.User]:
     user = crud.get_user_by_email(db, email)
     if not user:
@@ -81,9 +74,7 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 
 
-# -----------------------
-# FastAPI dependencias
-# -----------------------
+# --- FastAPI dependencias ---
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -112,9 +103,7 @@ def get_current_active_user(current_user: models.User = Depends(get_current_user
     return current_user
 
 
-# -----------------------
-# Remember / Persistent token helpers (opcional)
-# -----------------------
+# --- Remember / Persistent token helpers ---
 def generate_raw_token(n_bytes: int = 48) -> str:
     return secrets.token_urlsafe(n_bytes)
 
