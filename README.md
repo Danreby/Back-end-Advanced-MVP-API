@@ -17,5 +17,8 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 # API Externa Usada
 https://www.giantbomb.com/api/documentation/
 
+# rodar a seeder para o login
+python -m app.seed_admin
+
 # Acessar o BD
 docker exec -it back-end-advanced-mvp-api-db-1 mysql -u root -p
