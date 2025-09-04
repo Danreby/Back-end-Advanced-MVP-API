@@ -94,7 +94,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ## 7. Acessar a documentação / Swagger UI
 
-* Se a sua aplicação serve a documentação na raiz, abra no navegador:
+* Abra no navegador:
 
 ```
 Swagger
@@ -122,7 +122,7 @@ https://www.giantbomb.com/api/documentation/
 python -m app.seed_admin
 ```
 
-Credenciais padrão geradas pelo seeder (conforme seu passo):
+Credenciais geradas pelo seeder:
 
 * **Login:** `admin@example.com`
 * **Senha:** `admin123`
