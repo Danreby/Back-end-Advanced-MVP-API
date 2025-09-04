@@ -130,7 +130,7 @@ def resend_confirmation(payload: dict, background_tasks: BackgroundTasks, db: Se
     return {"message": "Confirmation email sent"}
 
 
-# --- DEV-only endpoints (somente quando DISABLE_EMAILS=True ou ENABLE_DEV_EMAIL_ENDPOINTS=True) ---
+# --- DEV-only endpoints ---
 @router.get("/dev/confirmations")
 def dev_list_confirmations():
     if not (DISABLE_EMAILS or ENABLE_DEV_EMAIL_ENDPOINTS):

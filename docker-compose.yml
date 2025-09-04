@@ -33,7 +33,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./:/app    # ⬅️ só em dev; em produção remova
+      - ./:/app 
     command: ["/app/entrypoint.sh"]
 
 volumes:

@@ -1,4 +1,3 @@
-# app/mail.py
 import os
 import logging
 from dotenv import load_dotenv
@@ -13,7 +12,6 @@ logger = logging.getLogger("app.mail")
 def _env_bool(key: str, default: str = "False") -> bool:
     return os.getenv(key, default).lower() in ("true", "1", "yes")
 
-# Compatibilidade com .env
 MAIL_USERNAME = os.getenv("MAIL_USERNAME")
 MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM", MAIL_USERNAME)
@@ -39,7 +37,6 @@ conf = ConnectionConfig(
     TEMPLATE_FOLDER="app/templates"
 )
 
-# armazenamento em memória para dev
 DEV_CONFIRMATIONS: dict[str, dict] = {}
 
 
@@ -61,15 +58,9 @@ async def send_email(subject: str, recipients: list[str], body: str, subtype: Me
 
 
 async def send_confirmation_email(user_email: str, token: Optional[str] = None) -> str:
-    """
-    Gera token (se necessário) e monta a URL de confirmação.
-    Em dev (DISABLE_EMAILS=True) guarda em memória e em dev/confirmation_links.log.
-    Retorna a confirmation_url sempre.
-    """
     if token is None:
         token = create_confirmation_token(user_email)
 
-    # usa env var diretamente — evita importar app.config.settings durante import do módulo
     base = os.getenv("EMAIL_CONFIRM_URL", os.getenv("VITE_API_BASE", "http://localhost:8000")).rstrip("/")
     confirmation_url = f"{base}/auth/confirm?token={token}"
 
@@ -99,7 +90,6 @@ async def send_confirmation_email(user_email: str, token: Optional[str] = None) 
     return confirmation_url
 
 
-# helpers utilitários (usados pelos endpoints dev)
 def get_dev_confirmations() -> dict:
     return DEV_CONFIRMATIONS
 

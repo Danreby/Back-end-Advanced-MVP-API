@@ -1,4 +1,3 @@
-# app/main.py
 import os
 from pathlib import Path
 from typing import Optional
@@ -13,18 +12,14 @@ from fastapi.responses import JSONResponse
 from .database import engine, Base
 from .routers import auth_router, users_router, giantbomb_router, games_router, reviews_router
 
-# cria tabelas (se for esse o comportamento desejado)
 Base.metadata.create_all(bind=engine)
 
-# lê variáveis de ambiente
 ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() in ("1", "true", "yes")
-DOCS_API_KEY = os.getenv("DOCS_API_KEY")  # se definido, protege os docs
+DOCS_API_KEY = os.getenv("DOCS_API_KEY")
 
-# Se quisermos proteger openapi e /docs, vamos desabilitar os docs automáticos
 if not ENABLE_DOCS or DOCS_API_KEY:
     app = FastAPI(title="MVP API", docs_url=None, redoc_url=None, openapi_url=None)
 else:
-    # docs automáticos ativados e públicos
     app = FastAPI(
         title="MVP API",
         docs_url="/docs",
@@ -79,18 +74,10 @@ if DOCS_API_KEY:
 
     @app.get("/openapi.json", dependencies=[Depends(check_docs_key)])
     def protected_openapi():
-        """
-        Rota protegida que serve o schema OpenAPI.
-        O header X-Docs-Key deve estar presente e igual a DOCS_API_KEY.
-        """
         return JSONResponse(app.openapi())
 
     @app.get("/docs", dependencies=[Depends(check_docs_key)])
     def protected_swagger():
-        """
-        Rota protegida que renderiza o Swagger UI.
-        Lembre-se de enviar header X-Docs-Key: <sua-chave> nas requisições.
-        """
         return get_swagger_ui_html(
             openapi_url="/openapi.json",
             title="Docs (protegido)",
