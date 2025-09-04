@@ -4,7 +4,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# dependências de sistema necessárias para compilar bibliotecas
+# dependências de sistema necessárias (mysqlclient etc)
 RUN apt-get update && apt-get install -y build-essential libssl-dev libffi-dev default-libmysqlclient-dev gcc && rm -rf /var/lib/apt/lists/*
 
 # copia requirements e instala dependências

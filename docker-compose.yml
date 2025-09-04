@@ -1,3 +1,4 @@
+version: "3.8"
 services:
   db:
     image: mysql:8.0
@@ -19,7 +20,6 @@ services:
   web:
     build:
       context: .
-      # dockerfile: Dockerfile
     depends_on:
       - db
     env_file:
@@ -28,6 +28,7 @@ services:
       - "8000:8000"
     volumes:
       - ./:/app
+    # command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   mysql_data:

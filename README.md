@@ -14,6 +14,9 @@ docker-compose up -d
 # rodar a api
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
+# Acessar o Swagger
+http://localhost:8000/docs
+
 # API Externa Usada
 https://www.giantbomb.com/api/documentation/
 
