@@ -1,9 +1,7 @@
-# app/config.py
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    # Database
     DB_USER: str
     DB_PASSWORD: str
     DB_HOST: str
@@ -11,12 +9,10 @@ class Settings(BaseSettings):
     DB_NAME: str
     DATABASE_URL: str
 
-    # JWT / segurança
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # Mail
     MAIL_USERNAME: str | None = None
     MAIL_PASSWORD: str | None = None
     MAIL_FROM: str | None = None
@@ -26,11 +22,9 @@ class Settings(BaseSettings):
     MAIL_USE_TLS: bool = True
     MAIL_USE_SSL: bool = False
 
-    # URLs
     VITE_API_BASE: str = "http://localhost:8000"
     EMAIL_CONFIRM_URL: str = "http://localhost:8000"
 
-    # GiantBomb API
     GIANTBOMB_API_KEY: str | None = None
 
     class Config:

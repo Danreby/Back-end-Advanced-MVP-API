@@ -19,6 +19,8 @@ https://www.giantbomb.com/api/documentation/
 
 # rodar a seeder para o login
 python -m app.seed_admin
+Login: admin@example.com
+Senha: admin123
 
 # Acessar o BD
 docker exec -it back-end-advanced-mvp-api-db-1 mysql -u root -p

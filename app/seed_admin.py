@@ -1,37 +1,25 @@
-#!/usr/bin/env python3
-"""
-Seeder sem import direto de app.auth (evita circular imports).
-Gera hash com bcrypt (mesma configuração do app) e cria/atualiza o admin.
-Rode da raiz do projeto: python -m app.seed_admin
-"""
-
 import os
 import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
 
-# importa modelos (ok: models importa Base de .database)
 from .models import Base, User
 
-# leitura do DATABASE_URL do .env (ou fallback)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "mysql+pymysql://NeydoMVP:senha123@127.0.0.1:3306/MVPAPI?charset=utf8mb4"
 )
 
-# valores padrão (podem ser sobrescritos por variáveis de ambiente)
 DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 DEFAULT_ADMIN_NAME = os.getenv("ADMIN_NAME", "Administrador")
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 OLD_BAD_EMAIL = "admin@catgame.local"
 
-# cria engine/session local (não depende de SessionLocal do projeto, evita import circular)
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 Session = sessionmaker(bind=engine, autoflush=False, future=True)
 
-# Contexto de hash igual ao do auth.py (bcrypt)
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -39,9 +27,7 @@ def seed_admin():
     print(f"[seed] Database URL: {DATABASE_URL}")
     print(f"[seed] E-mail alvo: {DEFAULT_ADMIN_EMAIL}")
 
-    # testa se bcrypt está operacional
     try:
-        # gera e verifica um hash teste para garantir que bcrypt está funcionando
         test_hash = pwd_ctx.hash("test")
         assert pwd_ctx.verify("test", test_hash)
     except Exception as e:
@@ -52,20 +38,14 @@ def seed_admin():
 
     session = Session()
     try:
-        # opcional (dev): criar tabelas se não existirem
-        # Base.metadata.create_all(bind=engine)
-
-        # gera hash do password padrão
         hashed = pwd_ctx.hash(DEFAULT_ADMIN_PASSWORD)
 
-        # verificação local
         try:
             ok = pwd_ctx.verify(DEFAULT_ADMIN_PASSWORD, hashed)
         except Exception:
             ok = False
         print(f"[seed] Hash gerado (prefixo): {hashed[:60]}... Verificação local: {'OK' if ok else 'FALHOU'}")
 
-        # 1) se já existe usuário com o e-mail final, atualiza
         user = session.query(User).filter(User.email == DEFAULT_ADMIN_EMAIL).first()
         if user:
             print(f"[seed] Usuário já existe ({DEFAULT_ADMIN_EMAIL}) — atualizando senha/nome/ativo.")
@@ -76,13 +56,10 @@ def seed_admin():
             print("[seed] Atualização concluída.")
             return
 
-        # 2) se existe usuário com o e-mail antigo problemático, atualiza para o novo e-mail
         old = session.query(User).filter(User.email == OLD_BAD_EMAIL).first()
         if old:
-            # garante que não haja conflito com o novo email:
             conflict = session.query(User).filter(User.email == DEFAULT_ADMIN_EMAIL).first()
             if conflict:
-                # caso raro: atualiza apenas senha/nome/ativo do old
                 print(f"[seed] Conflito: já existe {DEFAULT_ADMIN_EMAIL}. Atualizando apenas senha/ativo de {OLD_BAD_EMAIL}.")
                 old.hashed_password = hashed
                 old.name = DEFAULT_ADMIN_NAME
@@ -97,7 +74,6 @@ def seed_admin():
             print("[seed] Atualização concluída.")
             return
 
-        # 3) se nada existia, cria novo usuário
         print(f"[seed] Criando novo usuário {DEFAULT_ADMIN_EMAIL}")
         new_user = User(
             email=DEFAULT_ADMIN_EMAIL,

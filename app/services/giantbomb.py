@@ -63,7 +63,6 @@ def _get(url_path: str, params: Optional[dict] = None, retries: int = 3) -> dict
             attempt += 1
             continue
 
-    # Se não conseguir mesmo após retries
     raise RuntimeError(f"GiantBomb API request failed after {retries} attempts: {url}")
 
     """Internal GET with basic retry on 429 and error handling."""

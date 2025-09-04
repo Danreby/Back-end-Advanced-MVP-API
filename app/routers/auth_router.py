@@ -1,4 +1,3 @@
-# app/routers/auth_router.py
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
@@ -21,12 +20,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register")
 async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    # 1. Verifica se e-mail já existe
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email já registrado.")
 
-    # 2. Cria usuário
     new_user = models.User(
         name=user.name,
         email=user.email,
@@ -37,10 +34,8 @@ async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
 
-    # 3. Gera token de confirmação
     token = auth.create_confirmation_token(new_user.email)
 
-    # 4. Envia (ou simula) e retorna a URL de confirmação
     confirmation_url = await send_confirmation_email(new_user.email, token)
 
     return {
@@ -51,7 +46,7 @@ async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=schemas.Token)
 def login(
-    background_tasks: BackgroundTasks,  # deve vir antes de parâmetros com default
+    background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
@@ -64,7 +59,6 @@ def login(
         )
 
     if not getattr(user, "is_active", False):
-        # gera token e agenda envio do e-mail de confirmação (passando o token)
         token = auth.create_confirmation_token(user.email)
         background_tasks.add_task(send_confirmation_email, user.email, token)
         raise HTTPException(

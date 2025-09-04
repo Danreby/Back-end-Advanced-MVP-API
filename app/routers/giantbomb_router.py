@@ -1,4 +1,3 @@
-# app/routers/giantbomb_router.py
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from app.services.giantbomb import search_games, get_game_by_guid, extract_cover_urls
