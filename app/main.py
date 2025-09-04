@@ -17,15 +17,18 @@ Base.metadata.create_all(bind=engine)
 ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() in ("1", "true", "yes")
 DOCS_API_KEY = os.getenv("DOCS_API_KEY")
 
-if not ENABLE_DOCS or DOCS_API_KEY:
+if DOCS_API_KEY:
     app = FastAPI(title="MVP API", docs_url=None, redoc_url=None, openapi_url=None)
 else:
-    app = FastAPI(
-        title="MVP API",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
-    )
+    if ENABLE_DOCS:
+        app = FastAPI(
+            title="MVP API",
+            docs_url="/",    
+            redoc_url="/redoc",
+            openapi_url="/openapi.json",
+        )
+    else:
+        app = FastAPI(title="MVP API", docs_url=None, redoc_url=None, openapi_url=None)
 
 # --- CORS ---
 origins = [
@@ -64,7 +67,6 @@ def pong():
     return {"msg": "pong"}
 
 
-# --- Swagger protegido ---
 if DOCS_API_KEY:
     api_key_header = APIKeyHeader(name="X-Docs-Key", auto_error=False)
 
@@ -76,8 +78,8 @@ if DOCS_API_KEY:
     def protected_openapi():
         return JSONResponse(app.openapi())
 
-    @app.get("/docs", dependencies=[Depends(check_docs_key)])
-    def protected_swagger():
+    @app.get("/", dependencies=[Depends(check_docs_key)])
+    def protected_swagger_root():
         return get_swagger_ui_html(
             openapi_url="/openapi.json",
             title="Docs (protegido)",
