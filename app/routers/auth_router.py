@@ -81,7 +81,6 @@ def confirm_email(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="User not found")
 
     base = os.getenv("EMAIL_CONFIRM_URL", os.getenv("VITE_API_BASE", "http://localhost:8000"))
-    # remove entry dev (se existir) para manter a store limpa
     try:
         pop_dev_confirmation(email)
     except Exception:
