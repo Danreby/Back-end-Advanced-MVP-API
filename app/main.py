@@ -18,17 +18,17 @@ ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() in ("1", "true", "yes")
 DOCS_API_KEY = os.getenv("DOCS_API_KEY")
 
 if DOCS_API_KEY:
-    app = FastAPI(title="MVP API", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="MVP API (G4M3)", docs_url=None, redoc_url=None, openapi_url=None)
 else:
     if ENABLE_DOCS:
         app = FastAPI(
-            title="MVP API",
+            title="MVP API (G4M3)",
             docs_url="/",    
             redoc_url="/redoc",
             openapi_url="/openapi.json",
         )
     else:
-        app = FastAPI(title="MVP API", docs_url=None, redoc_url=None, openapi_url=None)
+        app = FastAPI(title="MVP API (G4M3)", docs_url=None, redoc_url=None, openapi_url=None)
 
 # --- CORS ---
 origins = [

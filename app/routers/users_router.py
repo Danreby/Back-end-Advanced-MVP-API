@@ -52,17 +52,22 @@ def _user_to_dict(user: models.User, games_count: Optional[int]) -> dict:
     user_dict["games_count"] = gc
     return user_dict
 
-@router.post("/", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-def create_user(
+@router.post(
+    "/",
+    response_model=schemas.UserOut,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="users_create_user_unique_v2"
+)
+def users_create(
     user_in: schemas.UserCreate,
     db: Session = Depends(get_db),
 ) -> Any:
     try:
-        email = user_in.email
+        payload = user_in.dict()
     except Exception:
-        data_tmp = user_in.dict() if hasattr(user_in, "dict") else dict(user_in)
-        email = data_tmp.get("email")
+        payload = dict(user_in)
 
+    email = payload.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="Email é obrigatório")
 
@@ -70,17 +75,10 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="Email já cadastrado")
 
-    try:
-        payload = user_in.dict()
-    except Exception:
-        payload = dict(user_in)
-
     pwd = payload.pop("password", None)
     if not pwd:
         raise HTTPException(status_code=400, detail="Senha é obrigatória")
     payload["hashed_password"] = auth.get_password_hash(pwd)
-
-    # payload.setdefault("is_active", False)
 
     try:
         u = models.User(**payload)
@@ -99,8 +97,12 @@ def create_user(
     return _user_to_dict(u, games_count)
 
 
-@router.get("/{user_id}", response_model=schemas.UserOut)
-def get_user(
+@router.get(
+    "/id/{user_id}",
+    response_model=schemas.UserOut,
+    operation_id="users_get_user_by_id_unique_v2"
+)
+def users_get_by_id(
     user_id: int = Path(..., description="ID do usuário"),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -115,8 +117,13 @@ def get_user(
 
     return _user_to_dict(user, games_count)
 
-@router.put("/{user_id}", response_model=schemas.UserOut)
-def update_user(
+
+@router.put(
+    "/id/{user_id}",
+    response_model=schemas.UserOut,
+    operation_id="users_update_user_by_id_unique_v2"
+)
+def users_update_by_id(
     user_id: int,
     user_in: schemas.UserUpdate,
     db: Session = Depends(get_db),
@@ -134,7 +141,10 @@ def update_user(
         payload = dict(user_in) if not isinstance(user_in, dict) else user_in
 
     if "email" in payload:
-        other = db.query(models.User).filter(models.User.email == payload["email"], models.User.id != user_id).first()
+        other = db.query(models.User).filter(
+            models.User.email == payload["email"],
+            models.User.id != user_id
+        ).first()
         if other:
             raise HTTPException(status_code=400, detail="Email já está em uso")
 
@@ -163,8 +173,12 @@ def update_user(
     return _user_to_dict(user, games_count)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(
+@router.delete(
+    "/id/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="users_delete_user_by_id_unique_v2"
+)
+def users_delete_by_id(
     user_id: int,
     db: Session = Depends(get_db),
 ) -> Response:

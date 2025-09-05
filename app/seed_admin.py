@@ -15,7 +15,7 @@ DEFAULT_ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@example.com")
 DEFAULT_ADMIN_NAME = os.getenv("ADMIN_NAME", "Administrador")
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
-OLD_BAD_EMAIL = "admin@catgame.local"
+OLD_BAD_EMAIL = "admin@G4M3.local"
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 Session = sessionmaker(bind=engine, autoflush=False, future=True)
