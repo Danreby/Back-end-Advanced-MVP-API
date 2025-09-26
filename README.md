@@ -1,4 +1,4 @@
-# Back-end Advanced — README
+# Back-end - Projeto MVP de Back-End Avançado
 
 Guia rápido de **instalação e execução** do projeto.
 
