@@ -1,40 +1,45 @@
-version: "3.8"
-
 services:
   db:
     image: mysql:8.0
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$MYSQL_ROOT_PASSWORD || exit 1"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p${MYSQL_ROOT_PASSWORD} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  web:
+  api:
     build:
       context: .
+      dockerfile: Dockerfile
     restart: on-failure
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     env_file:
       - .env
     environment:
-      DATABASE_URL: "mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}?charset=utf8mb4"
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DATABASE_URL: "mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db:${DB_PORT}/${DB_NAME}?charset=utf8mb4"
     ports:
       - "8000:8000"
     volumes:
-      - ./:/app 
-    command: ["/app/entrypoint.sh"]
+      - ./:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 volumes:
   mysql_data:
