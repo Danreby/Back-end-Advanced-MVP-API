@@ -41,5 +41,26 @@ services:
       - ./:/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
+  web:
+    build:
+      context: ../Back-end-Advanced-MVP-Interface
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - ../Back-end-Advanced-MVP-Interface:/app
+      - node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: "http://host.docker.internal:8000"
+      CHOKIDAR_USEPOLLING: "true"
+    entrypoint: ["npm", "run", "dev", "--", "--host"]
+    # se estiver em Linux/WSL e host.docker.internal não resolver, descomente:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
 volumes:
   mysql_data:
+  node_modules:
