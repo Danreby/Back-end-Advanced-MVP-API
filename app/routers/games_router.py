@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -32,8 +32,8 @@ def serialize_game_for_front(game: Game) -> Dict[str, Any]:
         "id": game.id,
         "external_guid": getattr(game, "external_guid", None),
         "name": game.name,
-        "release_date": game.release_date.isoformat() if getattr(game, "release_date", None) else None,
-        "release_date_formatted": game.release_date.strftime("%d/%m/%Y") if getattr(game, "release_date", None) else None,
+        "release_date": getattr(game, "release_date", None).isoformat() if getattr(game, "release_date", None) else None,
+        "release_date_formatted": getattr(game, "release_date", None).strftime("%d/%m/%Y") if getattr(game, "release_date", None) else None,
         "platforms": platforms,
         "publishers": publishers,
         "genres": genres,
@@ -51,13 +51,13 @@ def serialize_game_for_front(game: Game) -> Dict[str, Any]:
 
 
 @router.post("/", response_model=schemas.GameOut, status_code=status.HTTP_201_CREATED)
-def create_game(game_in: schemas.GameCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def create_game(game_in: schemas.GameCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     g = crud.create_game(db, current_user.id, game_in)
     return g
 
 
 @router.get("/", response_model=schemas.PaginatedGames)
-def list_my_games(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def list_my_games(skip: int = 0, limit: int = 50, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     items = crud.get_games_by_user(db, current_user.id, skip=skip, limit=limit)
     total = db.query(models.Game).filter(models.Game.user_id == current_user.id).count()
     return {"total": total, "items": items}
@@ -122,7 +122,7 @@ def get_game_public(game_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{game_id}/me")
-def get_game_with_my_review(game_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_game_with_my_review(game_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -145,7 +145,7 @@ def get_game_with_my_review(game_id: int, db: Session = Depends(get_db), current
 
 
 @router.put("/{game_id}", response_model=schemas.GameOut)
-def update_game(game_id: int, payload: schemas.GameUpdate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def update_game(game_id: int, payload: schemas.GameUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -156,7 +156,7 @@ def update_game(game_id: int, payload: schemas.GameUpdate, db: Session = Depends
 
 
 @router.delete("/{game_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_game(game_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def delete_game(game_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     g = db.get(models.Game, game_id)
     if not g:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -186,7 +186,7 @@ def list_reviews(game_id: int, public_only: bool = True, skip: int = 0, limit: i
 
 
 @router.post("/upsert-status", response_model=Dict)
-def upsert_game_status(payload: Dict, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def upsert_game_status(payload: Dict, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     game_id = payload.get("id")
     external_guid = payload.get("external_guid")
     status_val = payload.get("status")
@@ -221,3 +221,31 @@ def upsert_game_status(payload: Dict, db: Session = Depends(get_db), current_use
     payload_out = serialize_game_for_front(game)
     payload_out["user_data"] = {"status": status_val}
     return payload_out
+
+@router.post("/{game_id}/sessions", response_model=schemas.UserGameOut, status_code=status.HTTP_201_CREATED)
+def create_session_for_game(game_id: int, payload: schemas.UserGameCreate = Body(...), db: Session = Depends(get_db),
+                            current_user: models.User = Depends(get_current_user)):
+    g = db.get(models.Game, game_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+
+    ug = crud.create_user_game(db, current_user.id, game_id, started_at=payload.started_at, finished_at=payload.finished_at)
+    return ug
+
+
+@router.get("/{game_id}/sessions", response_model=List[schemas.UserGameOut])
+def list_sessions_for_game(game_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    g = db.get(models.Game, game_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="Game not found")
+    items = crud.get_user_games_by_game(db, game_id, skip=skip, limit=limit)
+    return items
+
+
+@router.get("/sessions/{user_game_id}/coplayers", response_model=List[schemas.ReviewUser])
+def get_coplayers_for_session(user_game_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    users = crud.find_coplayers_for_user_game(db, user_game_id)
+    out = []
+    for u in users:
+        out.append(schemas.ReviewUser.model_validate(u) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(u))
+    return out

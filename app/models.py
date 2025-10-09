@@ -5,14 +5,15 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from .database import Base
 
+# --- Users ---
 class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=True)
-    bio = Column(Text, nullable=True)        
-    avatar_url = Column(String(512), nullable=True)   
+    bio = Column(Text, nullable=True)
+    avatar_url = Column(String(512), nullable=True)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -22,6 +23,20 @@ class User(Base):
     reviews = relationship("Review", back_populates="user", cascade="all,delete-orphan")
     sections = relationship("Section", back_populates="user", cascade="all,delete-orphan")
     remember_tokens = relationship("RememberToken", back_populates="user", cascade="all,delete-orphan")
+
+    user_games = relationship("UserGame", back_populates="user", cascade="all,delete-orphan")
+    sent_friendships = relationship(
+        "Friendship",
+        back_populates="requester",
+        foreign_keys="Friendship.user_id",
+        cascade="all,delete-orphan"
+    )
+    received_friendships = relationship(
+        "Friendship",
+        back_populates="receiver",
+        foreign_keys="Friendship.friend_id",
+        cascade="all,delete-orphan"
+    )
 
 
 class RememberToken(Base):
@@ -59,6 +74,8 @@ class Game(Base):
     reviews = relationship("Review", back_populates="game", cascade="all,delete-orphan")
     sections = relationship("Section", back_populates="game", cascade="all,delete-orphan")
 
+    user_games = relationship("UserGame", back_populates="game", cascade="all,delete-orphan")
+
 
 class Review(Base):
     __tablename__ = "reviews"
@@ -92,3 +109,38 @@ class Section(Base):
 
     user = relationship("User", back_populates="sections")
     game = relationship("Game", back_populates="sections")
+
+
+# --- Novo: user_games pivot (registro de sessões/plays de usuários por jogo) ---
+class UserGame(Base):
+    __tablename__ = "user_games"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    user = relationship("User", back_populates="user_games")
+    game = relationship("Game", back_populates="user_games")
+
+
+# --- Novo: friendships pivot (pedidos/relacoes entre users) ---
+class Friendship(Base):
+    __tablename__ = "friendships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "friend_id", name="uq_user_friend"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    friend_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="pending")
+    message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    requester = relationship("User", back_populates="sent_friendships", foreign_keys=[user_id])
+    receiver = relationship("User", back_populates="received_friendships", foreign_keys=[friend_id])

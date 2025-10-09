@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, conint, ConfigDict
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
 
 # --- Users / Auth ---
 class UserCreate(BaseModel):
@@ -164,8 +165,8 @@ class ReviewBase(BaseModel):
 
 class ReviewUpsert(ReviewBase):
     game_id: Optional[int] = Field(None, description="ID interno do game (opcional se usar external_guid)")
-    external_guid: Optional[str] = Field(None, description="GUID externo do jogo (ex.: GiantBomb)")
-    name: Optional[str] = Field(None, description="Nome do jogo (opcional; só usado se for criar game mínimo)")
+    external_guid: Optional[str] = Field(None, description="GUID externo do jogo")
+    name: Optional[str] = Field(None, description="Nome do jogo")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -177,5 +178,82 @@ class ReviewAutoSave(BaseModel):
     review_text: Optional[str] = Field(None, max_length=5000, description="Texto da review")
     is_public: Optional[bool] = Field(True, description="Se a review é pública")
     name: Optional[str] = Field(None, description="Nome do jogo (opcional)")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Novos: pivot user <-> game (registro de sessões/plays por usuário) --- #
+class UserGameBase(BaseModel):
+    started_at: Optional[datetime] = Field(
+        None, description="Quando o usuário começou a jogar/registrou a sessão"
+    )
+    finished_at: Optional[datetime] = Field(
+        None, description="Quando o usuário finalizou a sessão (pode ser None se ainda jogando)"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserGameCreate(UserGameBase):
+    game_id: int = Field(..., description="ID do jogo")
+    # opcionalmente: metadata, plataforma, nota, etc.
+    # metadata: Optional[dict] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserGameUpdate(UserGameBase):
+    game_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserGameOut(UserGameBase):
+    id: int
+    user_id: int
+    game_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- Novos: friendships pivot (user <-> user) --- #
+class FriendshipStatus(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+    blocked = "blocked"
+
+
+class FriendshipBase(BaseModel):
+    status: FriendshipStatus = Field(FriendshipStatus.pending, description="Status da amizade")
+    message: Optional[str] = Field(None, description="Mensagem opcional do pedido de amizade")
+    created_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FriendshipCreate(BaseModel):
+    friend_id: int = Field(..., description="ID do usuário que será amigo (o destinatário)")
+    message: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FriendshipUpdate(BaseModel):
+    status: Optional[FriendshipStatus] = None
+    accepted_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FriendshipOut(FriendshipBase):
+    id: int
+    user_id: int
+    friend_id: int
+    created_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

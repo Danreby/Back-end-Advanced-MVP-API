@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Any, Union, Dict
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 
 from . import models, schemas
 from app.utils.security import hash_token, token_expiration
@@ -89,7 +89,7 @@ def update_user(db: Session, user_id: int, user_in: Union[schemas.UserUpdate, Di
         if isinstance(user_in, dict):
             data = user_in
 
-    allowed = {"name", "bio"} 
+    allowed = {"name", "bio", "avatar_url"}
     for k, v in data.items():
         if k in allowed:
             setattr(user, k, v)
@@ -259,3 +259,224 @@ def revoke_remember_token(db: Session, token_obj: models.RememberToken) -> None:
 def revoke_all_user_tokens(db: Session, user: models.User) -> None:
     db.query(models.RememberToken).filter_by(user_id=user.id).delete()
     db.commit()
+
+
+# --- UserGames (sessions/pivô) ---
+def create_user_game(db: Session, user_id: int, game_id: int, started_at: Optional[datetime] = None,
+                     finished_at: Optional[datetime] = None) -> models.UserGame:
+    ug = models.UserGame(
+        user_id=user_id,
+        game_id=game_id,
+        started_at=started_at,
+        finished_at=finished_at,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(ug)
+    db.commit()
+    db.refresh(ug)
+    return ug
+
+
+def get_user_game(db: Session, user_game_id: int) -> Optional[models.UserGame]:
+    return db.query(models.UserGame).filter(models.UserGame.id == user_game_id).first()
+
+
+def update_user_game(db: Session, user_game: models.UserGame, data: Dict[str, Any]) -> models.UserGame:
+    for k, v in data.items():
+        if hasattr(user_game, k) and v is not None:
+            setattr(user_game, k, v)
+    user_game.updated_at = datetime.utcnow()
+    db.add(user_game)
+    db.commit()
+    db.refresh(user_game)
+    return user_game
+
+
+def delete_user_game(db: Session, user_game: models.UserGame) -> None:
+    db.delete(user_game)
+    db.commit()
+
+
+def get_user_games_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 50) -> List[models.UserGame]:
+    return db.query(models.UserGame).filter(models.UserGame.user_id == user_id).offset(skip).limit(limit).all()
+
+
+def get_user_games_by_game(db: Session, game_id: int, skip: int = 0, limit: int = 100) -> List[models.UserGame]:
+    return db.query(models.UserGame).filter(models.UserGame.game_id == game_id).offset(skip).limit(limit).all()
+
+
+def find_coplayers_for_user_game(db: Session, user_game_id: int) -> List[models.User]:
+    """
+    Dado um user_game_id (uma sessão), retorna usuários que jogaram o MESMO game e cuja sessão
+    se sobrepõe com a sessão de referência.
+    Condição de overlap considera NULL finished_at como 'aberto' (overlap).
+    """
+    ref = db.query(models.UserGame).filter(models.UserGame.id == user_game_id).first()
+    if not ref:
+        return []
+
+    q = db.query(models.UserGame).filter(
+        models.UserGame.game_id == ref.game_id,
+        models.UserGame.user_id != ref.user_id
+    )
+
+    overlap_cond = and_(
+        or_(
+            models.UserGame.finished_at == None,
+            ref.started_at == None,
+            models.UserGame.finished_at >= ref.started_at
+        ),
+        or_(
+            ref.finished_at == None,
+            models.UserGame.started_at == None,
+            models.UserGame.started_at <= ref.finished_at
+        )
+    )
+
+    q = q.filter(overlap_cond)
+
+    user_game_rows = q.all()
+    user_ids = {ug.user_id for ug in user_game_rows}
+    if not user_ids:
+        return []
+
+    users = db.query(models.User).filter(models.User.id.in_(list(user_ids))).all()
+    return users
+
+
+# --- Friendships (pedidos/aceitação) ---
+def create_friend_request(db: Session, user_id: int, friend_id: int, message: Optional[str] = None) -> Optional[models.Friendship]:
+    if user_id == friend_id:
+        return None 
+
+    existing = db.query(models.Friendship).filter(
+        (models.Friendship.user_id == user_id) & (models.Friendship.friend_id == friend_id)
+    ).first()
+    if existing:
+        return None
+
+    reverse = db.query(models.Friendship).filter(
+        (models.Friendship.user_id == friend_id) & (models.Friendship.friend_id == user_id)
+    ).first()
+    if reverse:
+        if reverse.status == "pending":
+            reverse.status = "accepted"
+            reverse.accepted_at = datetime.utcnow()
+            reverse.updated_at = datetime.utcnow()
+            f = models.Friendship(
+                user_id=user_id,
+                friend_id=friend_id,
+                status="accepted",
+                message=message,
+                created_at=datetime.utcnow(),
+                accepted_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(f)
+            db.add(reverse)
+            db.commit()
+            db.refresh(f)
+            return f
+        else:
+            return None
+
+    f = models.Friendship(
+        user_id=user_id,
+        friend_id=friend_id,
+        status="pending",
+        message=message,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(f)
+    db.commit()
+    db.refresh(f)
+    return f
+
+
+def get_friend_request(db: Session, request_id: int) -> Optional[models.Friendship]:
+    return db.query(models.Friendship).filter(models.Friendship.id == request_id).first()
+
+
+def accept_friend_request(db: Session, request: models.Friendship) -> Optional[models.Friendship]:
+    if not request or request.status != "pending":
+        return None
+    request.status = "accepted"
+    request.accepted_at = datetime.utcnow()
+    request.updated_at = datetime.utcnow()
+    db.add(request)
+    exists_inverse = db.query(models.Friendship).filter(
+        models.Friendship.user_id == request.friend_id,
+        models.Friendship.friend_id == request.user_id
+    ).first()
+    if not exists_inverse:
+        inverse = models.Friendship(
+            user_id=request.friend_id,
+            friend_id=request.user_id,
+            status="accepted",
+            created_at=datetime.utcnow(),
+            accepted_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(inverse)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def reject_friend_request(db: Session, request: models.Friendship) -> Optional[models.Friendship]:
+    if not request or request.status != "pending":
+        return None
+    request.status = "rejected"
+    request.updated_at = datetime.utcnow()
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    return request
+
+
+def block_user(db: Session, user_id: int, block_id: int) -> models.Friendship:
+    """
+    Cria ou atualiza registro de friendship para 'blocked'.
+    """
+    existing = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.friend_id == block_id).first()
+    if existing:
+        existing.status = "blocked"
+        existing.updated_at = datetime.utcnow()
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    f = models.Friendship(
+        user_id=user_id,
+        friend_id=block_id,
+        status="blocked",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(f)
+    db.commit()
+    db.refresh(f)
+    return f
+
+
+def get_friends_for_user(db: Session, user_id: int) -> List[models.User]:
+    """
+    Retorna lista de users que são amigos (accepted) do user_id.
+    Considera entradas onde user_id é sender ou receiver (por isso checamos ambas direções).
+    """
+    # buscar todos os friendships accepted onde user é user_id
+    sent = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.status == "accepted").all()
+    received = db.query(models.Friendship).filter(models.Friendship.friend_id == user_id, models.Friendship.status == "accepted").all()
+
+    friend_ids = set()
+    for f in sent:
+        friend_ids.add(f.friend_id)
+    for f in received:
+        friend_ids.add(f.user_id)
+
+    if not friend_ids:
+        return []
+    users = db.query(models.User).filter(models.User.id.in_(list(friend_ids))).all()
+    return users

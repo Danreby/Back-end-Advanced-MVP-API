@@ -63,7 +63,7 @@ def users_create(
     db: Session = Depends(get_db),
 ) -> Any:
     try:
-        payload = user_in.dict()
+        payload = user_in.model_dump() if hasattr(user_in, "model_dump") else user_in.dict()
     except Exception:
         payload = dict(user_in)
 
@@ -133,10 +133,7 @@ def users_update_by_id(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
     try:
-        if hasattr(user_in, "model_dump"):
-            payload = user_in.model_dump(exclude_unset=True)
-        else:
-            payload = user_in.dict(exclude_unset=True)
+        payload = user_in.model_dump(exclude_unset=True) if hasattr(user_in, "model_dump") else user_in.dict(exclude_unset=True)
     except Exception:
         payload = dict(user_in) if not isinstance(user_in, dict) else user_in
 
@@ -415,3 +412,96 @@ def read_user_games(
             }
         )
     return out
+
+@router.post("/me/sessions", response_model=schemas.UserGameOut, status_code=status.HTTP_201_CREATED)
+def create_my_session(payload: schemas.UserGameCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ug = crud.create_user_game(db, current_user.id, payload.game_id, started_at=payload.started_at, finished_at=payload.finished_at)
+    return ug
+
+
+@router.get("/me/sessions", response_model=List[schemas.UserGameOut])
+def list_my_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    items = crud.get_user_games_by_user(db, current_user.id, skip=0, limit=200)
+    return items
+
+
+@router.put("/me/sessions/{session_id}", response_model=schemas.UserGameOut)
+def update_my_session(session_id: int, payload: schemas.UserGameUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ug = crud.get_user_game(db, session_id)
+    if not ug or ug.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    updated = crud.update_user_game(db, ug, payload.model_dump(exclude_unset=True) if hasattr(payload, "model_dump") else payload.dict(exclude_unset=True))
+    return updated
+
+
+@router.delete("/me/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_session(session_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ug = crud.get_user_game(db, session_id)
+    if not ug or ug.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    crud.delete_user_game(db, ug)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/sessions/{session_id}/coplayers", response_model=List[schemas.ReviewUser])
+def get_coplayers_for_my_session(session_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ug = crud.get_user_game(db, session_id)
+    if not ug or ug.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    users = crud.find_coplayers_for_user_game(db, session_id)
+    out = []
+    for u in users:
+        out.append(schemas.ReviewUser.model_validate(u) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(u))
+    return out
+
+@router.post("/me/friends", response_model=schemas.FriendshipOut, status_code=status.HTTP_201_CREATED)
+def send_friend_request(payload: schemas.FriendshipCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    if payload.friend_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Não é possível enviar pedido para si mesmo")
+    f = crud.create_friend_request(db, current_user.id, payload.friend_id, message=payload.message)
+    if not f:
+        raise HTTPException(status_code=400, detail="Não foi possível criar pedido (talvez já exista)")
+    return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
+
+
+@router.get("/me/friends", response_model=List[schemas.ReviewUser])
+def list_my_friends(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    friends = crud.get_friends_for_user(db, current_user.id)
+    out = []
+    for u in friends:
+        out.append(schemas.ReviewUser.model_validate(u) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(u))
+    return out
+
+
+@router.post("/me/friends/{request_id}/accept", response_model=schemas.FriendshipOut)
+def accept_friend(request_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    req = crud.get_friend_request(db, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    if req.friend_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    f = crud.accept_friend_request(db, req)
+    if not f:
+        raise HTTPException(status_code=400, detail="Não foi possível aceitar pedido")
+    return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
+
+
+@router.post("/me/friends/{request_id}/reject", response_model=schemas.FriendshipOut)
+def reject_friend(request_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    req = crud.get_friend_request(db, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    if req.friend_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    f = crud.reject_friend_request(db, req)
+    if not f:
+        raise HTTPException(status_code=400, detail="Não foi possível recusar pedido")
+    return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
+
+
+@router.post("/me/friends/{user_id}/block", response_model=schemas.FriendshipOut)
+def block_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Não é possível bloquear a si mesmo")
+    f = crud.block_user(db, current_user.id, user_id)
+    return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
