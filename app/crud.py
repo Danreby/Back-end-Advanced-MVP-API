@@ -437,9 +437,6 @@ def reject_friend_request(db: Session, request: models.Friendship) -> Optional[m
 
 
 def block_user(db: Session, user_id: int, block_id: int) -> models.Friendship:
-    """
-    Cria ou atualiza registro de friendship para 'blocked'.
-    """
     existing = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.friend_id == block_id).first()
     if existing:
         existing.status = "blocked"
@@ -462,10 +459,6 @@ def block_user(db: Session, user_id: int, block_id: int) -> models.Friendship:
 
 
 def get_friends_for_user(db: Session, user_id: int) -> List[models.User]:
-    """
-    Retorna lista de users que são amigos (accepted) do user_id.
-    Considera entradas onde user_id é sender ou receiver (por isso checamos ambas direções).
-    """
     # buscar todos os friendships accepted onde user é user_id
     sent = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.status == "accepted").all()
     received = db.query(models.Friendship).filter(models.Friendship.friend_id == user_id, models.Friendship.status == "accepted").all()
@@ -480,3 +473,58 @@ def get_friends_for_user(db: Session, user_id: int) -> List[models.User]:
         return []
     users = db.query(models.User).filter(models.User.id.in_(list(friend_ids))).all()
     return users
+
+def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+    if not q or not str(q).strip():
+        return {"total": 0, "items": []}
+
+    term = f"%{q.strip().lower()}%"
+
+    total_q = db.query(func.count(models.User.id)).filter(
+        or_(
+            func.lower(models.User.name).like(term),
+            func.lower(models.User.email).like(term)
+        )
+    )
+    total = int(total_q.scalar() or 0)
+
+    items_q = (
+        db.query(
+            models.User.id.label("id"),
+            models.User.email.label("email"),
+            models.User.name.label("name"),
+            models.User.bio.label("bio"),
+            models.User.avatar_url.label("avatar_url"),
+            models.User.is_active.label("is_active"),
+            models.User.created_at.label("created_at"),
+            func.count(models.Game.id).label("games_count"),
+        )
+        .outerjoin(models.Game, models.Game.user_id == models.User.id)
+        .filter(
+            or_(
+                func.lower(models.User.name).like(term),
+                func.lower(models.User.email).like(term)
+            )
+        )
+        .group_by(models.User.id)
+        .order_by(models.User.name.asc()) 
+        .offset(max(0, (page - 1)) * page_size)
+        .limit(page_size)
+    )
+
+    rows = items_q.all()
+
+    items = []
+    for r in rows:
+        items.append({
+            "id": r.id,
+            "email": r.email,
+            "name": r.name,
+            "bio": r.bio,
+            "avatar_url": r.avatar_url,
+            "is_active": bool(r.is_active),
+            "created_at": r.created_at.isoformat() if r.created_at is not None else None,
+            "games_count": int(r.games_count or 0),
+        })
+
+    return {"total": total, "items": items}

@@ -12,11 +12,14 @@ from fastapi import (
     Body,
     Path,
     Response,
+    Query,
 )
 from sqlalchemy.orm import Session
-
+import logging
 from .. import schemas, crud, auth, models
 from ..database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -505,3 +508,20 @@ def block_user(user_id: int, db: Session = Depends(get_db), current_user: models
         raise HTTPException(status_code=400, detail="Não é possível bloquear a si mesmo")
     f = crud.block_user(db, current_user.id, user_id)
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
+
+@router.get("/search")
+def search_users(
+    q: str = Query(..., description="Termo de busca: nome ou email"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    try:
+        res = crud.search_users(db, q, page=page, page_size=page_size)
+    except Exception as e:
+        # log completo para diagnóstico dentro do container
+        logger.exception("Erro ao executar search_users: %s", e)
+        # Retornar erro genérico pro frontend (não expor stack)
+        raise HTTPException(status_code=500, detail="Erro na busca de usuários")
+
+    return res
