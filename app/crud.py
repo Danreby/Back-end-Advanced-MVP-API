@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Any, Union, Dict
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, and_
 
 from . import models, schemas
@@ -459,7 +459,6 @@ def block_user(db: Session, user_id: int, block_id: int) -> models.Friendship:
 
 
 def get_friends_for_user(db: Session, user_id: int) -> List[models.User]:
-    # buscar todos os friendships accepted onde user é user_id
     sent = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.status == "accepted").all()
     received = db.query(models.Friendship).filter(models.Friendship.friend_id == user_id, models.Friendship.status == "accepted").all()
 
@@ -528,3 +527,17 @@ def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dic
         })
 
     return {"total": total, "items": items}
+
+
+def get_friend_requests_for_user(db: Session, user_id: int, only_pending: bool = True, limit: Optional[int] = None) -> List[models.Friendship]:
+    q = db.query(models.Friendship).options(joinedload(models.Friendship.user)).filter(models.Friendship.friend_id == user_id)
+
+    if only_pending:
+        q = q.filter(models.Friendship.status == "pending")
+
+    q = q.order_by(models.Friendship.created_at.desc())
+
+    if limit:
+        q = q.limit(int(limit))
+
+    return q.all()

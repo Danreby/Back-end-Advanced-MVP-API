@@ -509,19 +509,68 @@ def block_user(user_id: int, db: Session = Depends(get_db), current_user: models
     f = crud.block_user(db, current_user.id, user_id)
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
 
+
 @router.get("/search")
 def search_users(
     q: str = Query(..., description="Termo de busca: nome ou email"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
 ):
     try:
         res = crud.search_users(db, q, page=page, page_size=page_size)
     except Exception as e:
-        # log completo para diagnóstico dentro do container
         logger.exception("Erro ao executar search_users: %s", e)
-        # Retornar erro genérico pro frontend (não expor stack)
         raise HTTPException(status_code=500, detail="Erro na busca de usuários")
 
-    return res
+    if isinstance(res, dict) and "items" in res:
+        items = res["items"]
+        filtered = [u for u in items if (getattr(u, "id", None) or u.get("id")) != current_user.id]
+        total = res.get("total", len(items))
+        adjusted_total = total - (len(items) - len(filtered))
+        return {"items": filtered, "total": max(0, adjusted_total)}
+    elif isinstance(res, list):
+        filtered = [u for u in res if (getattr(u, "id", None) or (u.get("id") if isinstance(u, dict) else None)) != current_user.id]
+        return filtered
+    else:
+        return res
+
+@router.get("/me/friends/requests", response_model=List[schemas.FriendshipOut])
+def list_my_friend_requests(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+) -> Any:
+    try:
+        rows = crud.get_friend_requests_for_user(db, current_user.id, only_pending=True)
+    except Exception as e:
+        logger.exception("Erro ao buscar solicitações de amizade: %s", e)
+        raise HTTPException(status_code=500, detail="Erro ao carregar solicitações de amizade")
+
+    out = []
+    for r in rows:
+        try:
+            obj = schemas.FriendshipOut.model_validate(r) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(r)
+            out.append(obj)
+        except Exception:
+            minimal = {
+                "id": getattr(r, "id", None),
+                "user_id": getattr(r, "user_id", getattr(r, "from_user_id", None)),
+                "friend_id": getattr(r, "friend_id", getattr(r, "to_user_id", None)),
+                "status": getattr(r, "status", None),
+                "created_at": getattr(r, "created_at", None),
+            }
+            sender = getattr(r, "user", None) or getattr(r, "from_user", None)
+            if sender:
+                try:
+                    minimal["from_user"] = schemas.ReviewUser.model_validate(sender) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(sender)
+                except Exception:
+                    minimal["from_user"] = {
+                        "id": getattr(sender, "id", None),
+                        "name": getattr(sender, "name", None),
+                        "email": getattr(sender, "email", None),
+                        "avatar_url": getattr(sender, "avatar_url", None),
+                    }
+            out.append(minimal)
+    return out
+
