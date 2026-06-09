@@ -43,13 +43,6 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[models
     user = crud.get_user_by_email(db, email)
     if not user:
         return None
-
-    if not getattr(user, "is_active", True):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
-
     if not verify_password(password, user.hashed_password):
         return None
     return user

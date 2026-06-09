@@ -31,12 +31,16 @@ else:
         app = FastAPI(title="MVP API (G4M3)", docs_url=None, redoc_url=None, openapi_url=None)
 
 # --- CORS ---
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+_cors_env = os.getenv("CORS_ORIGINS", "")
+if _cors_env:
+    origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 app.add_middleware(
     CORSMiddleware,

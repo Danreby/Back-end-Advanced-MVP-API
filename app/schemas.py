@@ -74,6 +74,7 @@ class ReviewOut(BaseModel):
     id: int
     user_id: int
     game_id: int
+    external_guid: Optional[str] = None
     rating: Optional[int]
     review_text: Optional[str]
     is_public: bool

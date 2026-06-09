@@ -1,3 +1,5 @@
+import re
+import html as _html
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
@@ -9,10 +11,18 @@ from app.models import Game, Review
 
 router = APIRouter(prefix="/games", tags=["games"])
 
+MAX_REVIEW_LIMIT = 500
+
+
+def _strip_html(text: str) -> str:
+    """Remove all HTML tags and decode entities from text."""
+    no_tags = re.sub(r'<[^>]+>', '', text or '')
+    return _html.unescape(no_tags).strip()
+
 
 def serialize_game_for_front(game: Game) -> Dict[str, Any]:
     raw_desc = getattr(game, "description", None) or getattr(game, "summary", None) or ""
-    safe_desc = raw_desc.replace("<script", "&lt;script").replace("</script>", "&lt;/script&gt;")
+    safe_desc = _strip_html(raw_desc)
 
     image_obj = None
     if getattr(game, "cover_url", None):
@@ -168,6 +178,13 @@ def delete_game(game_id: int, db: Session = Depends(get_db), current_user: model
 
 @router.get("/{game_id}/reviews", response_model=schemas.PaginatedReviews)
 def list_reviews(game_id: int, public_only: bool = True, skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    if skip < 0:
+        skip = 0
+    if limit <= 0:
+        limit = 50
+    if limit > MAX_REVIEW_LIMIT:
+        limit = MAX_REVIEW_LIMIT
+
     base_q = db.query(Review).filter(Review.game_id == game_id)
     if public_only:
         base_q = base_q.filter(Review.is_public == True)
@@ -176,7 +193,6 @@ def list_reviews(game_id: int, public_only: bool = True, skip: int = 0, limit: i
 
     items = (
         base_q
-        .options()
         .order_by(Review.created_at.desc())
         .offset(skip)
         .limit(limit)

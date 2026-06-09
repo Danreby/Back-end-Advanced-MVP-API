@@ -86,6 +86,7 @@ class Review(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    external_guid = Column(String(100), nullable=True, index=True)
     rating = Column(Integer, nullable=True)
     review_text = Column(Text, nullable=True)
     is_public = Column(Boolean, default=True)
