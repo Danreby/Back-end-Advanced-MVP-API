@@ -258,3 +258,38 @@ class FriendshipOut(FriendshipBase):
     accepted_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FriendshipRequesterOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    email: str
+    avatar_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FriendshipIncomingOut(BaseModel):
+    id: int
+    user_id: int
+    friend_id: int
+    status: str
+    message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    from_user: Optional[FriendshipRequesterOut] = None
+
+
+class FriendshipOutgoingOut(BaseModel):
+    id: int
+    user_id: int
+    friend_id: int
+    status: str
+    message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    to_user: Optional[FriendshipRequesterOut] = None
+
+
+class FriendshipStatusOut(BaseModel):
+    """Status atual da relação entre dois usuários."""
+    status: str  # "none" | "pending_sent" | "pending_received" | "accepted" | "blocked"
+    friendship_id: Optional[int] = None

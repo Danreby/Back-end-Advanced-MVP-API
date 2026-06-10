@@ -346,19 +346,28 @@ def find_coplayers_for_user_game(db: Session, user_game_id: int) -> List[models.
 
 
 # --- Friendships (pedidos/aceitação) ---
+def get_friendship_between(db: Session, user_id: int, other_id: int) -> Optional[models.Friendship]:
+    return db.query(models.Friendship).filter_by(user_id=user_id, friend_id=other_id).first()
+
+
 def create_friend_request(db: Session, user_id: int, friend_id: int, message: Optional[str] = None) -> Optional[models.Friendship]:
     if user_id == friend_id:
-        return None 
+        return None
 
-    existing = db.query(models.Friendship).filter(
-        (models.Friendship.user_id == user_id) & (models.Friendship.friend_id == friend_id)
+    blocked = db.query(models.Friendship).filter(
+        or_(
+            and_(models.Friendship.user_id == user_id, models.Friendship.friend_id == friend_id, models.Friendship.status == "blocked"),
+            and_(models.Friendship.user_id == friend_id, models.Friendship.friend_id == user_id, models.Friendship.status == "blocked"),
+        )
     ).first()
+    if blocked:
+        return None
+
+    existing = db.query(models.Friendship).filter_by(user_id=user_id, friend_id=friend_id).first()
     if existing:
         return None
 
-    reverse = db.query(models.Friendship).filter(
-        (models.Friendship.user_id == friend_id) & (models.Friendship.friend_id == user_id)
-    ).first()
+    reverse = db.query(models.Friendship).filter_by(user_id=friend_id, friend_id=user_id).first()
     if reverse:
         if reverse.status == "pending":
             reverse.status = "accepted"
@@ -378,8 +387,7 @@ def create_friend_request(db: Session, user_id: int, friend_id: int, message: Op
             db.commit()
             db.refresh(f)
             return f
-        else:
-            return None
+        return None
 
     f = models.Friendship(
         user_id=user_id,
@@ -437,41 +445,79 @@ def reject_friend_request(db: Session, request: models.Friendship) -> Optional[m
 
 
 def block_user(db: Session, user_id: int, block_id: int) -> models.Friendship:
-    existing = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.friend_id == block_id).first()
+    existing = db.query(models.Friendship).filter_by(user_id=user_id, friend_id=block_id).first()
     if existing:
         existing.status = "blocked"
         existing.updated_at = datetime.utcnow()
         db.add(existing)
-        db.commit()
-        db.refresh(existing)
-        return existing
-    f = models.Friendship(
-        user_id=user_id,
-        friend_id=block_id,
-        status="blocked",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-    db.add(f)
+    else:
+        existing = models.Friendship(
+            user_id=user_id,
+            friend_id=block_id,
+            status="blocked",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(existing)
+
+    inverse = db.query(models.Friendship).filter_by(user_id=block_id, friend_id=user_id).first()
+    if inverse and inverse.status != "blocked":
+        db.delete(inverse)
+
     db.commit()
-    db.refresh(f)
-    return f
+    db.refresh(existing)
+    return existing
+
+
+def cancel_friend_request(db: Session, request_id: int, user_id: int) -> bool:
+    f = db.query(models.Friendship).filter_by(id=request_id, user_id=user_id, status="pending").first()
+    if not f:
+        return False
+    db.delete(f)
+    db.commit()
+    return True
+
+
+def remove_friend(db: Session, user_id: int, friend_id: int) -> bool:
+    f1 = db.query(models.Friendship).filter_by(user_id=user_id, friend_id=friend_id).first()
+    f2 = db.query(models.Friendship).filter_by(user_id=friend_id, friend_id=user_id).first()
+    if not f1 and not f2:
+        return False
+    if f1:
+        db.delete(f1)
+    if f2:
+        db.delete(f2)
+    db.commit()
+    return True
+
+
+def get_sent_friend_requests(db: Session, user_id: int) -> List[models.Friendship]:
+    return (
+        db.query(models.Friendship)
+        .options(joinedload(models.Friendship.receiver))
+        .filter_by(user_id=user_id, status="pending")
+        .order_by(models.Friendship.created_at.desc())
+        .all()
+    )
 
 
 def get_friends_for_user(db: Session, user_id: int) -> List[models.User]:
-    sent = db.query(models.Friendship).filter(models.Friendship.user_id == user_id, models.Friendship.status == "accepted").all()
-    received = db.query(models.Friendship).filter(models.Friendship.friend_id == user_id, models.Friendship.status == "accepted").all()
-
-    friend_ids = set()
-    for f in sent:
-        friend_ids.add(f.friend_id)
-    for f in received:
-        friend_ids.add(f.user_id)
-
+    sent_ids = {
+        f.friend_id
+        for f in db.query(models.Friendship.friend_id)
+        .filter_by(user_id=user_id, status="accepted")
+        .all()
+    }
+    received_ids = {
+        f.user_id
+        for f in db.query(models.Friendship.user_id)
+        .filter_by(friend_id=user_id, status="accepted")
+        .all()
+    }
+    friend_ids = sent_ids | received_ids
     if not friend_ids:
         return []
-    users = db.query(models.User).filter(models.User.id.in_(list(friend_ids))).all()
-    return users
+    return db.query(models.User).filter(models.User.id.in_(list(friend_ids))).all()
 
 def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
     if not q or not str(q).strip():
@@ -479,11 +525,14 @@ def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dic
 
     term = f"%{q.strip().lower()}%"
 
+    name_or_email = or_(
+        func.lower(models.User.name).like(term),
+        func.lower(models.User.email).like(term),
+    )
+
     total_q = db.query(func.count(models.User.id)).filter(
-        or_(
-            func.lower(models.User.name).like(term),
-            func.lower(models.User.email).like(term)
-        )
+        models.User.is_active == True,
+        name_or_email,
     )
     total = int(total_q.scalar() or 0)
 
@@ -499,14 +548,9 @@ def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dic
             func.count(models.Game.id).label("games_count"),
         )
         .outerjoin(models.Game, models.Game.user_id == models.User.id)
-        .filter(
-            or_(
-                func.lower(models.User.name).like(term),
-                func.lower(models.User.email).like(term)
-            )
-        )
+        .filter(models.User.is_active == True, name_or_email)
         .group_by(models.User.id)
-        .order_by(models.User.name.asc()) 
+        .order_by(models.User.name.asc())
         .offset(max(0, (page - 1)) * page_size)
         .limit(page_size)
     )
@@ -530,7 +574,11 @@ def search_users(db: Session, q: str, page: int = 1, page_size: int = 20) -> Dic
 
 
 def get_friend_requests_for_user(db: Session, user_id: int, only_pending: bool = True, limit: Optional[int] = None) -> List[models.Friendship]:
-    q = db.query(models.Friendship).options(joinedload(models.Friendship.user)).filter(models.Friendship.friend_id == user_id)
+    q = (
+        db.query(models.Friendship)
+        .options(joinedload(models.Friendship.requester))
+        .filter(models.Friendship.friend_id == user_id)
+    )
 
     if only_pending:
         q = q.filter(models.Friendship.status == "pending")

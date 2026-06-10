@@ -536,41 +536,113 @@ def search_users(
     else:
         return res
 
-@router.get("/me/friends/requests", response_model=List[schemas.FriendshipOut])
+@router.get("/me/friends/requests", response_model=List[schemas.FriendshipIncomingOut])
 def list_my_friend_requests(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ) -> Any:
-    try:
-        rows = crud.get_friend_requests_for_user(db, current_user.id, only_pending=True)
-    except Exception as e:
-        logger.exception("Erro ao buscar solicitações de amizade: %s", e)
-        raise HTTPException(status_code=500, detail="Erro ao carregar solicitações de amizade")
-
+    rows = crud.get_friend_requests_for_user(db, current_user.id, only_pending=True)
     out = []
     for r in rows:
-        try:
-            obj = schemas.FriendshipOut.model_validate(r) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(r)
-            out.append(obj)
-        except Exception:
-            minimal = {
-                "id": getattr(r, "id", None),
-                "user_id": getattr(r, "user_id", getattr(r, "from_user_id", None)),
-                "friend_id": getattr(r, "friend_id", getattr(r, "to_user_id", None)),
-                "status": getattr(r, "status", None),
-                "created_at": getattr(r, "created_at", None),
+        sender = r.requester
+        from_user = None
+        if sender:
+            from_user = {
+                "id": sender.id,
+                "name": sender.name,
+                "email": sender.email,
+                "avatar_url": sender.avatar_url,
             }
-            sender = getattr(r, "user", None) or getattr(r, "from_user", None)
-            if sender:
-                try:
-                    minimal["from_user"] = schemas.ReviewUser.model_validate(sender) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(sender)
-                except Exception:
-                    minimal["from_user"] = {
-                        "id": getattr(sender, "id", None),
-                        "name": getattr(sender, "name", None),
-                        "email": getattr(sender, "email", None),
-                        "avatar_url": getattr(sender, "avatar_url", None),
-                    }
-            out.append(minimal)
+        out.append(schemas.FriendshipIncomingOut(
+            id=r.id,
+            user_id=r.user_id,
+            friend_id=r.friend_id,
+            status=r.status,
+            message=r.message,
+            created_at=r.created_at,
+            from_user=from_user,
+        ))
     return out
+
+
+@router.get("/me/friends/requests/sent", response_model=List[schemas.FriendshipOutgoingOut])
+def list_my_sent_requests(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+) -> Any:
+    rows = crud.get_sent_friend_requests(db, current_user.id)
+    out = []
+    for r in rows:
+        target = r.receiver
+        to_user = None
+        if target:
+            to_user = {
+                "id": target.id,
+                "name": target.name,
+                "email": target.email,
+                "avatar_url": target.avatar_url,
+            }
+        out.append(schemas.FriendshipOutgoingOut(
+            id=r.id,
+            user_id=r.user_id,
+            friend_id=r.friend_id,
+            status=r.status,
+            message=r.message,
+            created_at=r.created_at,
+            to_user=to_user,
+        ))
+    return out
+
+
+@router.get("/me/friends/status/{target_user_id}", response_model=schemas.FriendshipStatusOut)
+def get_friendship_status(
+    target_user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+) -> Any:
+    if target_user_id == current_user.id:
+        return schemas.FriendshipStatusOut(status="self")
+
+    sent = crud.get_friendship_between(db, current_user.id, target_user_id)
+    if sent:
+        if sent.status == "blocked":
+            return schemas.FriendshipStatusOut(status="blocked", friendship_id=sent.id)
+        if sent.status == "accepted":
+            return schemas.FriendshipStatusOut(status="accepted", friendship_id=sent.id)
+        if sent.status == "pending":
+            return schemas.FriendshipStatusOut(status="pending_sent", friendship_id=sent.id)
+
+    received = crud.get_friendship_between(db, target_user_id, current_user.id)
+    if received:
+        if received.status == "accepted":
+            return schemas.FriendshipStatusOut(status="accepted", friendship_id=received.id)
+        if received.status == "pending":
+            return schemas.FriendshipStatusOut(status="pending_received", friendship_id=received.id)
+        # Se eles bloquearam você, não revele — retorna "none"
+
+    return schemas.FriendshipStatusOut(status="none")
+
+
+@router.delete("/me/friends/{friend_id}", status_code=204)
+def remove_friend(
+    friend_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+) -> Any:
+    removed = crud.remove_friend(db, current_user.id, friend_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Amizade não encontrada")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/me/friends/requests/{request_id}", status_code=204)
+def cancel_friend_request(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+) -> Any:
+    cancelled = crud.cancel_friend_request(db, request_id, current_user.id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Solicitação não encontrada ou já processada")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
