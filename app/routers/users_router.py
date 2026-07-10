@@ -33,12 +33,10 @@ os.makedirs(AVATAR_DIR, exist_ok=True)
 def _user_to_dict(user: models.User, games_count: Optional[int]) -> dict:
     gc = int(games_count or 0)
     try:
-        # Compat com Pydantic v2 ou v1
         if hasattr(schemas.UserOut, "model_validate"):
             user_model = schemas.UserOut.model_validate(user)
             user_dict = user_model.model_dump()
         else:
-            # Pydantic v1
             user_model = schemas.UserOut.from_orm(user)
             user_dict = user_model.dict()
     except Exception:
@@ -55,11 +53,16 @@ def _user_to_dict(user: models.User, games_count: Optional[int]) -> dict:
     user_dict["games_count"] = gc
     return user_dict
 
+
+# ─── Admin / direto ───────────────────────────────────────────────────────────
+
 @router.post(
     "/",
     response_model=schemas.UserOut,
     status_code=status.HTTP_201_CREATED,
-    operation_id="users_create_user_unique_v2"
+    operation_id="users_create_user_unique_v2",
+    summary="Criar usuário (direto)",
+    description="Cria um usuário sem fluxo de confirmação de e-mail. Para registro público use **POST /auth/register**.",
 )
 def users_create(
     user_in: schemas.UserCreate,
@@ -103,7 +106,8 @@ def users_create(
 @router.get(
     "/id/{user_id}",
     response_model=schemas.UserOut,
-    operation_id="users_get_user_by_id_unique_v2"
+    operation_id="users_get_user_by_id_unique_v2",
+    summary="Buscar usuário por ID",
 )
 def users_get_by_id(
     user_id: int = Path(..., description="ID do usuário"),
@@ -124,7 +128,8 @@ def users_get_by_id(
 @router.put(
     "/id/{user_id}",
     response_model=schemas.UserOut,
-    operation_id="users_update_user_by_id_unique_v2"
+    operation_id="users_update_user_by_id_unique_v2",
+    summary="Atualizar usuário por ID",
 )
 def users_update_by_id(
     user_id: int,
@@ -176,7 +181,8 @@ def users_update_by_id(
 @router.delete(
     "/id/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    operation_id="users_delete_user_by_id_unique_v2"
+    operation_id="users_delete_user_by_id_unique_v2",
+    summary="Remover usuário por ID",
 )
 def users_delete_by_id(
     user_id: int,
@@ -196,8 +202,9 @@ def users_delete_by_id(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+# ─── Perfil do usuário autenticado ────────────────────────────────────────────
 
-@router.get("/me", response_model=schemas.UserOut)
+@router.get("/me", response_model=schemas.UserOut, summary="Meu perfil")
 def read_users_me(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -211,7 +218,7 @@ def read_users_me(
     return _user_to_dict(user, games_count)
 
 
-@router.put("/me", response_model=schemas.UserOut)
+@router.put("/me", response_model=schemas.UserOut, summary="Atualizar meu perfil (completo)")
 def update_users_me(
     user_in: schemas.UserUpdate,
     db: Session = Depends(get_db),
@@ -223,20 +230,22 @@ def update_users_me(
 
     data = crud.get_user_profile(db, updated.id)
     if not data:
-        raise HTTPException(
-            status_code=404, detail="Usuário não encontrado após atualização"
-        )
+        raise HTTPException(status_code=404, detail="Usuário não encontrado após atualização")
 
     return _user_to_dict(data["user"], data["games_count"])
 
 
-@router.patch("/me", response_model=schemas.UserOut)
+@router.patch(
+    "/me",
+    response_model=schemas.UserOut,
+    summary="Atualizar campos do meu perfil (parcial)",
+    description="Permite atualizar campos individuais. Envie `avatar_url: null` para remover o avatar.",
+)
 def patch_users_me(
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ) -> Any:
-    # remover avatar (quando enviado como null)
     if "avatar_url" in payload and payload["avatar_url"] is None:
         try:
             old = getattr(current_user, "avatar_url", None)
@@ -258,9 +267,7 @@ def patch_users_me(
 
         data = crud.get_user_profile(db, current_user.id)
         if not data:
-            raise HTTPException(
-                status_code=404, detail="Usuário não encontrado após remoção"
-            )
+            raise HTTPException(status_code=404, detail="Usuário não encontrado após remoção")
         return _user_to_dict(data["user"], data["games_count"])
 
     updated = crud.update_user(db, current_user.id, payload)
@@ -268,22 +275,18 @@ def patch_users_me(
         raise HTTPException(status_code=400, detail="Não foi possível atualizar o perfil")
     data = crud.get_user_profile(db, updated.id)
     if not data:
-        raise HTTPException(
-            status_code=404, detail="Usuário não encontrado após atualização"
-        )
+        raise HTTPException(status_code=404, detail="Usuário não encontrado após atualização")
     return _user_to_dict(data["user"], data["games_count"])
 
 
-@router.post("/change-password")
+@router.post("/change-password", summary="Alterar senha")
 def change_password(
     payload: schemas.ChangePassword,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ) -> Any:
     if not auth.verify_password(payload.old_password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Senha antiga incorreta"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha antiga incorreta")
 
     hashed = auth.get_password_hash(payload.new_password)
     updated = crud.set_user_password(db, current_user.id, hashed)
@@ -313,7 +316,11 @@ def _save_avatar_file(contents: bytes, content_type: str) -> str:
     return f"/{AVATAR_DIR}/{filename}"
 
 
-@router.post("/me/avatar")
+@router.post(
+    "/me/avatar",
+    summary="Upload de avatar",
+    description="Aceita imagens JPEG, PNG ou WebP com até 2 MB.",
+)
 async def upload_avatar(
     request: Request,
     file: UploadFile = File(...),
@@ -357,7 +364,9 @@ async def upload_avatar(
     return {"avatar_url": full_url, "user": user_out}
 
 
-@router.get("/me/games")
+# ─── Jogos do usuário ─────────────────────────────────────────────────────────
+
+@router.get("/me/games", summary="Meus jogos")
 def read_my_games(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -384,16 +393,14 @@ def read_my_games(
     return out
 
 
-@router.get("/{user_id}/games")
+@router.get("/{user_id}/games", summary="Jogos de um usuário")
 def read_user_games(
     user_id: int = Path(..., description="ID do usuário"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ) -> Any:
     if current_user.id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
 
     games = db.query(models.Game).filter(models.Game.user_id == user_id).all()
 
@@ -416,20 +423,40 @@ def read_user_games(
         )
     return out
 
-@router.post("/me/sessions", response_model=schemas.UserGameOut, status_code=status.HTTP_201_CREATED)
-def create_my_session(payload: schemas.UserGameCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+
+# ─── Sessões de jogo ──────────────────────────────────────────────────────────
+
+@router.post(
+    "/me/sessions",
+    response_model=schemas.UserGameOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Criar sessão de jogo",
+)
+def create_my_session(
+    payload: schemas.UserGameCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     ug = crud.create_user_game(db, current_user.id, payload.game_id, started_at=payload.started_at, finished_at=payload.finished_at)
     return ug
 
 
-@router.get("/me/sessions", response_model=List[schemas.UserGameOut])
-def list_my_sessions(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.get("/me/sessions", response_model=List[schemas.UserGameOut], summary="Listar minhas sessões de jogo")
+def list_my_sessions(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     items = crud.get_user_games_by_user(db, current_user.id, skip=0, limit=200)
     return items
 
 
-@router.put("/me/sessions/{session_id}", response_model=schemas.UserGameOut)
-def update_my_session(session_id: int, payload: schemas.UserGameUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.put("/me/sessions/{session_id}", response_model=schemas.UserGameOut, summary="Atualizar sessão de jogo")
+def update_my_session(
+    session_id: int,
+    payload: schemas.UserGameUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     ug = crud.get_user_game(db, session_id)
     if not ug or ug.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
@@ -437,8 +464,12 @@ def update_my_session(session_id: int, payload: schemas.UserGameUpdate, db: Sess
     return updated
 
 
-@router.delete("/me/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_my_session(session_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.delete("/me/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Remover sessão de jogo")
+def delete_my_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     ug = crud.get_user_game(db, session_id)
     if not ug or ug.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
@@ -446,8 +477,17 @@ def delete_my_session(session_id: int, db: Session = Depends(get_db), current_us
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/sessions/{session_id}/coplayers", response_model=List[schemas.ReviewUser])
-def get_coplayers_for_my_session(session_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.get(
+    "/sessions/{session_id}/coplayers",
+    response_model=List[schemas.ReviewUser],
+    summary="Coplayers de uma sessão",
+    description="Retorna outros usuários que jogaram o mesmo jogo no mesmo período.",
+)
+def get_coplayers_for_my_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     ug = crud.get_user_game(db, session_id)
     if not ug or ug.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
@@ -457,8 +497,20 @@ def get_coplayers_for_my_session(session_id: int, db: Session = Depends(get_db),
         out.append(schemas.ReviewUser.model_validate(u) if hasattr(schemas.ReviewUser, "model_validate") else schemas.ReviewUser.from_orm(u))
     return out
 
-@router.post("/me/friends", response_model=schemas.FriendshipOut, status_code=status.HTTP_201_CREATED)
-def send_friend_request(payload: schemas.FriendshipCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+
+# ─── Amizades ─────────────────────────────────────────────────────────────────
+
+@router.post(
+    "/me/friends",
+    response_model=schemas.FriendshipOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Enviar pedido de amizade",
+)
+def send_friend_request(
+    payload: schemas.FriendshipCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     if payload.friend_id == current_user.id:
         raise HTTPException(status_code=400, detail="Não é possível enviar pedido para si mesmo")
     f = crud.create_friend_request(db, current_user.id, payload.friend_id, message=payload.message)
@@ -467,8 +519,11 @@ def send_friend_request(payload: schemas.FriendshipCreate, db: Session = Depends
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
 
 
-@router.get("/me/friends", response_model=List[schemas.ReviewUser])
-def list_my_friends(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.get("/me/friends", response_model=List[schemas.ReviewUser], summary="Listar amigos")
+def list_my_friends(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     friends = crud.get_friends_for_user(db, current_user.id)
     out = []
     for u in friends:
@@ -476,8 +531,16 @@ def list_my_friends(db: Session = Depends(get_db), current_user: models.User = D
     return out
 
 
-@router.post("/me/friends/{request_id}/accept", response_model=schemas.FriendshipOut)
-def accept_friend(request_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.post(
+    "/me/friends/{request_id}/accept",
+    response_model=schemas.FriendshipOut,
+    summary="Aceitar pedido de amizade",
+)
+def accept_friend(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     req = crud.get_friend_request(db, request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
@@ -489,8 +552,16 @@ def accept_friend(request_id: int, db: Session = Depends(get_db), current_user: 
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
 
 
-@router.post("/me/friends/{request_id}/reject", response_model=schemas.FriendshipOut)
-def reject_friend(request_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.post(
+    "/me/friends/{request_id}/reject",
+    response_model=schemas.FriendshipOut,
+    summary="Recusar pedido de amizade",
+)
+def reject_friend(
+    request_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     req = crud.get_friend_request(db, request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
@@ -502,15 +573,27 @@ def reject_friend(request_id: int, db: Session = Depends(get_db), current_user: 
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
 
 
-@router.post("/me/friends/{user_id}/block", response_model=schemas.FriendshipOut)
-def block_user(user_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+@router.post(
+    "/me/friends/{user_id}/block",
+    response_model=schemas.FriendshipOut,
+    summary="Bloquear usuário",
+)
+def block_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Não é possível bloquear a si mesmo")
     f = crud.block_user(db, current_user.id, user_id)
     return schemas.FriendshipOut.model_validate(f) if hasattr(schemas.FriendshipOut, "model_validate") else schemas.FriendshipOut.from_orm(f)
 
 
-@router.get("/search")
+@router.get(
+    "/search",
+    summary="Buscar usuários",
+    description="Busca por nome ou e-mail. Retorna paginado e exclui o próprio usuário autenticado.",
+)
 def search_users(
     q: str = Query(..., description="Termo de busca: nome ou email"),
     page: int = Query(1, ge=1),
@@ -536,7 +619,12 @@ def search_users(
     else:
         return res
 
-@router.get("/me/friends/requests", response_model=List[schemas.FriendshipIncomingOut])
+
+@router.get(
+    "/me/friends/requests",
+    response_model=List[schemas.FriendshipIncomingOut],
+    summary="Pedidos de amizade recebidos",
+)
 def list_my_friend_requests(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -565,7 +653,11 @@ def list_my_friend_requests(
     return out
 
 
-@router.get("/me/friends/requests/sent", response_model=List[schemas.FriendshipOutgoingOut])
+@router.get(
+    "/me/friends/requests/sent",
+    response_model=List[schemas.FriendshipOutgoingOut],
+    summary="Pedidos de amizade enviados",
+)
 def list_my_sent_requests(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
@@ -594,7 +686,12 @@ def list_my_sent_requests(
     return out
 
 
-@router.get("/me/friends/status/{target_user_id}", response_model=schemas.FriendshipStatusOut)
+@router.get(
+    "/me/friends/status/{target_user_id}",
+    response_model=schemas.FriendshipStatusOut,
+    summary="Status de amizade com um usuário",
+    description="Retorna o estado da relação: `none`, `self`, `pending_sent`, `pending_received`, `accepted` ou `blocked`.",
+)
 def get_friendship_status(
     target_user_id: int,
     db: Session = Depends(get_db),
@@ -618,31 +715,29 @@ def get_friendship_status(
             return schemas.FriendshipStatusOut(status="accepted", friendship_id=received.id)
         if received.status == "pending":
             return schemas.FriendshipStatusOut(status="pending_received", friendship_id=received.id)
-        # Se eles bloquearam você, não revele — retorna "none"
 
     return schemas.FriendshipStatusOut(status="none")
 
 
-@router.delete("/me/friends/{friend_id}", status_code=204)
+@router.delete("/me/friends/{friend_id}", status_code=204, summary="Remover amigo")
 def remove_friend(
     friend_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
-) -> Any:
+) -> Response:
     removed = crud.remove_friend(db, current_user.id, friend_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Amizade não encontrada")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/me/friends/requests/{request_id}", status_code=204)
+@router.delete("/me/friends/requests/{request_id}", status_code=204, summary="Cancelar pedido de amizade")
 def cancel_friend_request(
     request_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
-) -> Any:
+) -> Response:
     cancelled = crud.cancel_friend_request(db, request_id, current_user.id)
     if not cancelled:
         raise HTTPException(status_code=404, detail="Solicitação não encontrada ou já processada")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-

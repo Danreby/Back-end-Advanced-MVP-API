@@ -17,18 +17,65 @@ Base.metadata.create_all(bind=engine)
 ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() in ("1", "true", "yes")
 DOCS_API_KEY = os.getenv("DOCS_API_KEY")
 
+openapi_tags = [
+    {
+        "name": "auth",
+        "description": "Registro de conta, login e confirmação de e-mail.",
+    },
+    {
+        "name": "users",
+        "description": "Perfil do usuário autenticado, busca de usuários, sistema de amizades e sessões de jogo.",
+    },
+    {
+        "name": "games",
+        "description": "Catálogo pessoal de jogos: criação, listagem, atualização, status e sessões.",
+    },
+    {
+        "name": "reviews",
+        "description": "Reviews e avaliações de jogos — criação, edição, remoção e listagens públicas.",
+    },
+    {
+        "name": "giantbomb",
+        "description": "Busca e detalhes de jogos via API externa do GiantBomb.",
+    },
+    {
+        "name": "dev",
+        "description": "⚠️ Endpoints disponíveis apenas em modo de desenvolvimento (`DISABLE_EMAILS=True`).",
+    },
+]
+
+_swagger_params = {
+    "defaultModelsExpandDepth": -1,
+    "displayRequestDuration": True,
+    "filter": True,
+    "persistAuthorization": True,
+    "tryItOutEnabled": True,
+}
+
+_app_meta = dict(
+    title="GameLink API",
+    description=(
+        "API do **GameLink** — plataforma de catálogo de jogos com reviews públicas e sistema de amizades.\n\n"
+        "### Autenticação\n"
+        "A maioria dos endpoints exige um token JWT via `Authorization: Bearer <token>`. "
+        "Obtenha o token em **POST /auth/login** e use o botão **Authorize** acima."
+    ),
+    version="1.0.0",
+    openapi_tags=openapi_tags,
+)
+
 if DOCS_API_KEY:
-    app = FastAPI(title="MVP API (G4M3)", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(**_app_meta, docs_url=None, redoc_url=None, openapi_url=None)
+elif ENABLE_DOCS:
+    app = FastAPI(
+        **_app_meta,
+        docs_url="/",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        swagger_ui_parameters=_swagger_params,
+    )
 else:
-    if ENABLE_DOCS:
-        app = FastAPI(
-            title="MVP API (G4M3)",
-            docs_url="/",    
-            redoc_url="/redoc",
-            openapi_url="/openapi.json",
-        )
-    else:
-        app = FastAPI(title="MVP API (G4M3)", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(**_app_meta, docs_url=None, redoc_url=None, openapi_url=None)
 
 # --- CORS ---
 _cors_env = os.getenv("CORS_ORIGINS", "")
@@ -66,7 +113,7 @@ AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.get("/ping")
+@app.get("/ping", tags=["auth"], summary="Health check", include_in_schema=False)
 def pong():
     return {"msg": "pong"}
 
@@ -78,19 +125,16 @@ if DOCS_API_KEY:
         if api_key != DOCS_API_KEY:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
-    @app.get("/openapi.json", dependencies=[Depends(check_docs_key)])
+    @app.get("/openapi.json", dependencies=[Depends(check_docs_key)], include_in_schema=False)
     def protected_openapi():
         return JSONResponse(app.openapi())
 
-    @app.get("/", dependencies=[Depends(check_docs_key)])
+    @app.get("/", dependencies=[Depends(check_docs_key)], include_in_schema=False)
     def protected_swagger_root():
         return get_swagger_ui_html(
             openapi_url="/openapi.json",
-            title="Docs (protegido)",
-            swagger_ui_parameters={
-                "defaultModelsExpandDepth": -1,
-                "displayRequestDuration": True,
-            },
+            title="GameLink API Docs",
+            swagger_ui_parameters=_swagger_params,
         )
 
 elif ENABLE_DOCS:

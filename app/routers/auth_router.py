@@ -18,7 +18,11 @@ from ..mail import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register")
+@router.post(
+    "/register",
+    summary="Registrar novo usuário",
+    description="Cria uma conta e envia e-mail de confirmação. Em modo dev, retorna o link de confirmação no corpo da resposta.",
+)
 async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
@@ -35,7 +39,6 @@ async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     token = auth.create_confirmation_token(new_user.email)
-
     confirmation_url = await send_confirmation_email(new_user.email, token)
 
     return {
@@ -44,7 +47,12 @@ async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/login", response_model=schemas.Token)
+@router.post(
+    "/login",
+    response_model=schemas.Token,
+    summary="Login — obtém token JWT",
+    description="Autentica com `username` (e-mail) e `password`. Retorna um Bearer token para usar nos demais endpoints.",
+)
 def login(
     background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -73,7 +81,12 @@ def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/confirm")
+@router.get(
+    "/confirm",
+    summary="Confirmar e-mail via token",
+    description="Ativa a conta do usuário a partir do token enviado por e-mail. Redireciona para `/auth/confirmed`.",
+    include_in_schema=False,
+)
 def confirm_email(token: str, db: Session = Depends(get_db)):
     email = auth.verify_confirmation_token(token)
     user = crud.get_user_by_email(db, email)
@@ -93,7 +106,11 @@ def confirm_email(token: str, db: Session = Depends(get_db)):
     return RedirectResponse(url=f"{base.rstrip('/')}/auth/confirmed?status=success")
 
 
-@router.get("/confirmed")
+@router.get(
+    "/confirmed",
+    summary="Página de confirmação de conta",
+    include_in_schema=False,
+)
 def confirmed(status: str = "success"):
     if status == "success":
         msg = "E-mail confirmado com sucesso!"
@@ -112,7 +129,10 @@ def confirmed(status: str = "success"):
     )
 
 
-@router.post("/resend-confirmation")
+@router.post(
+    "/resend-confirmation",
+    summary="Reenviar e-mail de confirmação",
+)
 def resend_confirmation(payload: dict, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     email = payload.get("email")
     if not email:
@@ -130,14 +150,24 @@ def resend_confirmation(payload: dict, background_tasks: BackgroundTasks, db: Se
 
 
 # --- DEV-only endpoints ---
-@router.get("/dev/confirmations")
+@router.get(
+    "/dev/confirmations",
+    tags=["dev"],
+    summary="[DEV] Listar tokens de confirmação pendentes",
+    include_in_schema=DISABLE_EMAILS or ENABLE_DEV_EMAIL_ENDPOINTS,
+)
 def dev_list_confirmations():
     if not (DISABLE_EMAILS or ENABLE_DEV_EMAIL_ENDPOINTS):
         raise HTTPException(status_code=404, detail="Not found")
     return get_dev_confirmations()
 
 
-@router.get("/dev/confirmations/{email}")
+@router.get(
+    "/dev/confirmations/{email}",
+    tags=["dev"],
+    summary="[DEV] Obter token de confirmação por e-mail",
+    include_in_schema=DISABLE_EMAILS or ENABLE_DEV_EMAIL_ENDPOINTS,
+)
 def dev_get_confirmation(email: str):
     if not (DISABLE_EMAILS or ENABLE_DEV_EMAIL_ENDPOINTS):
         raise HTTPException(status_code=404, detail="Not found")
