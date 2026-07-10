@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     EMAIL_CONFIRM_URL: str = "http://localhost:8000"
 
     GIANTBOMB_API_KEY: str | None = None
+    RAWG_API_KEY: str | None = None
 
     class Config:
         env_file = ".env"

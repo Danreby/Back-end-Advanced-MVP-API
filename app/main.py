@@ -36,7 +36,7 @@ openapi_tags = [
     },
     {
         "name": "giantbomb",
-        "description": "Busca e detalhes de jogos via API externa do GiantBomb.",
+        "description": "Busca e detalhes de jogos via RAWG API (rawg.io).",
     },
     {
         "name": "dev",

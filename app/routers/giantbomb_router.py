@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
-from app.services.giantbomb import search_games, get_game_by_guid, extract_cover_urls
+from app.services.rawg import search_games, get_game_by_guid, extract_cover_urls
 import random
 
 router = APIRouter(prefix="/gb", tags=["giantbomb"])
 
 
-@router.get("/search", summary="Search games on GiantBomb")
+@router.get("/search", summary="Buscar jogos (RAWG)")
 def gb_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)):
     try:
         results = search_games(q, limit=limit)
